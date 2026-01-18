@@ -1,7 +1,7 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
-import { getTask, addComment, addTimeEntry, toggleChecklistItem, addChecklistItem } from '@/lib/db/tasks'
+import { getTask } from '@/lib/db/tasks'
 import { PageHeader } from '@/components/ui/page-header'
 import { ArrowLeft, Clock, CheckSquare, MessageSquare, Paperclip, Calendar } from 'lucide-react'
 import Link from 'next/link'
