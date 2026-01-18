@@ -96,10 +96,37 @@ export async function createClientAction(formData: FormData) {
     const ticket = formData.get('ticket') ? Number(formData.get('ticket')) : null
     const status = formData.get('status') as string
     const payment_type = formData.get('payment_type') as string
+    const cnpj = formData.get('cnpj') as string || null
 
     // Dates
     const contract_start = formData.get('contract_start') as string || null
     const contract_end = formData.get('contract_end') as string || null
+
+    // File Upload
+    let contract_url = null
+    const contractFile = formData.get('contract_file') as File
+
+    if (contractFile && contractFile.size > 0) {
+        const filename = `${Date.now()}-${contractFile.name}`
+        // Assuming 'documents-files' bucket exists as per migration check
+        const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('documents-files')
+            .upload(`contracts/${user.id}/${filename}`, contractFile)
+
+        if (uploadError) {
+            console.error('Upload error:', uploadError)
+            // We continue without file or return error? Let's return error to be safe
+            return { error: 'Erro ao fazer upload do contrato: ' + uploadError.message }
+        }
+
+        // Get public URL or just store path. 
+        // If bucket is public (which we forced in migration), we can get publicUrl.
+        const { data: { publicUrl } } = supabase.storage
+            .from('documents-files')
+            .getPublicUrl(`contracts/${user.id}/${filename}`)
+
+        contract_url = publicUrl
+    }
 
     const { error } = await supabase.from('clients').insert({
         name,
@@ -110,7 +137,9 @@ export async function createClientAction(formData: FormData) {
         payment_type,
         contract_start,
         contract_end,
-        owner_user_id: user.id
+        owner_user_id: user.id,
+        cnpj,
+        contract_url
     })
 
     if (error) {
@@ -150,6 +179,64 @@ export async function deleteClientAction(id: string) {
         return { error: error.message }
     }
 
+    revalidatePath('/clients')
+    return { success: true }
+}
+
+export async function updateClientAction(formData: FormData) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { error: 'Usuário não autenticado' }
+    }
+
+    const id = formData.get('id') as string
+    if (!id) return { error: 'ID do cliente não fornecido' }
+
+    const name = formData.get('name') as string
+    const type = formData.get('type') as string
+    const segment = formData.get('segment') as string
+    const ticket = formData.get('ticket') ? Number(formData.get('ticket')) : null
+    const status = formData.get('status') as string
+    const payment_type = formData.get('payment_type') as string
+    const cnpj = formData.get('cnpj') as string || null
+    const contract_start = formData.get('contract_start') as string || null
+    const contract_end = formData.get('contract_end') as string || null
+
+    const changes: any = {
+        name, type, segment, ticket, status, payment_type, cnpj, contract_start, contract_end
+    }
+
+    // Handle File Replacement
+    const contractFile = formData.get('contract_file') as File
+    if (contractFile && contractFile.size > 0) {
+        const filename = `${Date.now()}-${contractFile.name}`
+        const { error: uploadError } = await supabase.storage
+            .from('documents-files')
+            .upload(`contracts/${user.id}/${filename}`, contractFile)
+
+        if (uploadError) {
+            return { error: 'Erro ao fazer upload do novo contrato: ' + uploadError.message }
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('documents-files')
+            .getPublicUrl(`contracts/${user.id}/${filename}`)
+
+        changes.contract_url = publicUrl
+    }
+
+    const { error } = await supabase
+        .from('clients')
+        .update(changes)
+        .eq('id', id)
+
+    if (error) {
+        return { error: error.message }
+    }
+
+    revalidatePath(`/clients/${id}`)
     revalidatePath('/clients')
     return { success: true }
 }

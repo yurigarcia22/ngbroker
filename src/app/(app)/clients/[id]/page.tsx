@@ -10,6 +10,8 @@ import { useParams } from 'next/navigation'
 import { getProjects } from '@/lib/db/projects'
 import { ProjectList } from '@/components/projects/project-list'
 import { NewProjectModal } from '@/components/projects/new-project-modal'
+import { EditClientModal } from '@/components/clients/edit-client-modal'
+import { AlertCircle, FileText, Pencil } from 'lucide-react'
 
 export default function ClientDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
@@ -18,6 +20,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('overview')
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
 
     const fetchClient = async () => {
         setLoading(true)
@@ -72,6 +75,13 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                     <div className="flex items-center space-x-2">
                         <span className="text-sm text-gray-500 mr-2">Status:</span>
                         <StatusBadge status={client.status} />
+                        <button
+                            onClick={() => setIsEditModalOpen(true)}
+                            className="bg-white p-1.5 rounded-md border border-gray-300 text-gray-500 hover:text-gray-700 hover:bg-gray-50 mb-0.5 ml-2"
+                            title="Editar Cliente"
+                        >
+                            <Pencil className="w-4 h-4" />
+                        </button>
                         {activeTab === 'projects' && (
                             <button
                                 onClick={() => setIsProjectModalOpen(true)}
@@ -109,6 +119,39 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                                 <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Informações do Cliente</h3>
                                 <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
                                     <div className="sm:col-span-1">
+                                        <dt className="text-sm font-medium text-gray-500">Nome</dt>
+                                        <dd className="mt-1 text-sm text-gray-900">{client.name}</dd>
+                                    </div>
+                                    <div className="sm:col-span-1">
+                                        <dt className="text-sm font-medium text-gray-500">CNPJ</dt>
+                                        <dd className="mt-1 text-sm text-gray-900 font-mono">{client.cnpj || '-'}</dd>
+                                    </div>
+                                    <div className="sm:col-span-1">
+                                        <dt className="text-sm font-medium text-gray-500">Periodicidade</dt>
+                                        <dd className="mt-1 text-sm text-gray-900">{client.payment_type || '-'}</dd>
+                                    </div>
+                                    <div className="sm:col-span-1">
+                                        <dt className="text-sm font-medium text-gray-500">Contrato (Vigência)</dt>
+                                        <dd className="mt-1 text-sm text-gray-900">
+                                            {client.contract_start ? new Date(client.contract_start).toLocaleDateString() : '?'}
+                                            {' - '}
+                                            {client.contract_end ? new Date(client.contract_end).toLocaleDateString() : '?'}
+                                        </dd>
+                                    </div>
+                                    <div className="sm:col-span-1">
+                                        <dt className="text-sm font-medium text-gray-500">Documento</dt>
+                                        <dd className="mt-1 text-sm text-gray-900">
+                                            {client.contract_url ? (
+                                                <a href={client.contract_url} target="_blank" className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                                    <FileText className="w-3.5 h-3.5" />
+                                                    Abrir Contrato (PDF)
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-400 italic">Sem contrato anexado</span>
+                                            )}
+                                        </dd>
+                                    </div>
+                                    <div className="sm:col-span-1">
                                         <dt className="text-sm font-medium text-gray-500">Tipo</dt>
                                         <dd className="mt-1 text-sm text-gray-900 flex items-center gap-1">
                                             {client.type === 'PJ' ? <Building2 className="w-4 h-4 text-gray-400" /> : <User className="w-4 h-4 text-gray-400" />}
@@ -123,7 +166,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                                         <dt className="text-sm font-medium text-gray-500">Ticket Médio</dt>
                                         <dd className="mt-1 text-sm text-gray-900 flex items-center gap-1">
                                             <Wallet className="w-4 h-4 text-gray-400" />
-                                            {client.ticket ? `R$ ${client.ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                                            {client.ticket ? `R$ ${typeof client.ticket === 'number' ? client.ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : parseFloat(client.ticket).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
                                         </dd>
                                     </div>
                                     <div className="sm:col-span-1">
@@ -167,6 +210,15 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                 isOpen={isProjectModalOpen}
                 onClose={handleProjectModalClose}
                 clientId={id}
+            />
+
+            <EditClientModal
+                isOpen={isEditModalOpen}
+                onClose={() => {
+                    setIsEditModalOpen(false)
+                    fetchClient() // Refresh data after edit
+                }}
+                client={client}
             />
         </>
     )
