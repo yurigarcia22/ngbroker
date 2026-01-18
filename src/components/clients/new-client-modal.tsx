@@ -3,11 +3,61 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/modal'
 import { createClientAction } from '@/app/(app)/clients/actions'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
+
+// Predefined segments list
+const PREDEFINED_SEGMENTS = [
+    'Varejo',
+    'Tecnologia',
+    'Saúde',
+    'Educação',
+    'Indústria',
+    'Serviços',
+    'Imobiliário',
+    'Financeiro',
+    'Marketing'
+]
 
 export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+
+    // Form States
+    const [segmentMode, setSegmentMode] = useState<'select' | 'create'>('select')
+    const [customSegment, setCustomSegment] = useState('')
+    const [selectedSegment, setSelectedSegment] = useState('')
+    const [ticketValue, setTicketValue] = useState('')
+
+    // Reset state on close
+    const handleClose = () => {
+        setSegmentMode('select')
+        setCustomSegment('')
+        setSelectedSegment('')
+        setTicketValue('')
+        setError('')
+        onClose()
+    }
+
+    // Format currency input
+    const handleTicketChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/\D/g, '')
+
+        // Convert to float for display (e.g. 1234 -> 12.34)
+        const floatValue = parseFloat(value) / 100
+
+        if (isNaN(floatValue)) {
+            setTicketValue('')
+            return
+        }
+
+        // Format as BRL currency string
+        const formatted = floatValue.toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        })
+
+        setTicketValue(formatted)
+    }
 
     async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault()
@@ -15,6 +65,18 @@ export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
         setError('')
 
         const formData = new FormData(event.currentTarget)
+
+        // Handle Segment
+        const finalSegment = segmentMode === 'create' ? customSegment : selectedSegment
+        formData.set('segment', finalSegment)
+
+        // Handle Ticket (User sees formatted string, we need to send number)
+        // Extract numbers from "R$ 1.234,56" -> "1234.56"
+        const cleanTicket = ticketValue.replace(/[^\d,]/g, '').replace(',', '.')
+        if (cleanTicket) {
+            formData.set('ticket', cleanTicket)
+        }
+
         const result = await createClientAction(formData)
 
         setLoading(false)
@@ -22,60 +84,164 @@ export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
         if (result?.error) {
             setError(result.error)
         } else {
-            onClose()
+            handleClose()
         }
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Novo Cliente">
+        <Modal isOpen={isOpen} onClose={handleClose} title="Novo Cliente">
             <form onSubmit={onSubmit} className="space-y-4 mt-4">
+                {/* Nome */}
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome</label>
-                    <input type="text" name="name" id="name" required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
+                    <input
+                        type="text"
+                        name="name"
+                        id="name"
+                        required
+                        placeholder="Ex: Empresa X LTDA"
+                        className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                    />
                 </div>
 
-                <div>
-                    <label htmlFor="type" className="block text-sm font-medium text-gray-700">Tipo</label>
-                    <select name="type" id="type" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
-                        <option value="PF">Pessoa Física</option>
-                        <option value="PJ">Pessoa Jurídica</option>
-                    </select>
+                {/* Tipo e Pagamento (Grid) */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="type" className="block text-sm font-medium text-gray-700">Tipo</label>
+                        <select name="type" id="type" className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2">
+                            <option value="PJ">Pessoa Jurídica</option>
+                            <option value="PF">Pessoa Física</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label htmlFor="payment_type" className="block text-sm font-medium text-gray-700">Periodicidade</label>
+                        <select name="payment_type" id="payment_type" className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2">
+                            <option value="Recorrente">Recorrente (MRR)</option>
+                            <option value="Pontual">Único (Pontual)</option>
+                        </select>
+                    </div>
                 </div>
 
+                {/* Segmento */}
                 <div>
                     <label htmlFor="segment" className="block text-sm font-medium text-gray-700">Segmento</label>
-                    <input type="text" name="segment" id="segment" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
+                    {segmentMode === 'select' ? (
+                        <div className="flex gap-2">
+                            <select
+                                name="segment_select"
+                                value={selectedSegment}
+                                onChange={(e) => {
+                                    if (e.target.value === 'NEW') {
+                                        setSegmentMode('create')
+                                    } else {
+                                        setSelectedSegment(e.target.value)
+                                    }
+                                }}
+                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                            >
+                                <option value="">Selecione...</option>
+                                {PREDEFINED_SEGMENTS.map(seg => (
+                                    <option key={seg} value={seg}>{seg}</option>
+                                ))}
+                                <option value="NEW" className="font-semibold text-indigo-600">+ Criar Novo Segmento</option>
+                            </select>
+                        </div>
+                    ) : (
+                        <div className="flex gap-2 mt-1">
+                            <input
+                                type="text"
+                                value={customSegment}
+                                onChange={(e) => setCustomSegment(e.target.value)}
+                                placeholder="Digite o novo segmento..."
+                                className="block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                                autoFocus
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setSegmentMode('select')}
+                                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    )}
                 </div>
 
-                <div>
-                    <label htmlFor="ticket" className="block text-sm font-medium text-gray-700">Ticket Médio (R$)</label>
-                    <input type="number" name="ticket" id="ticket" step="0.01" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
+                {/* Datas do Contrato */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="contract_start" className="block text-sm font-medium text-gray-700">Início do Contrato</label>
+                        <input
+                            type="date"
+                            name="contract_start"
+                            id="contract_start"
+                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="contract_end" className="block text-sm font-medium text-gray-700">Fim do Contrato</label>
+                        <input
+                            type="date"
+                            name="contract_end"
+                            id="contract_end"
+                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                        />
+                    </div>
                 </div>
 
-                <div>
-                    <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
-                    <select name="status" id="status" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
-                        <option value="Ativo">Ativo</option>
-                        <option value="Pausado">Pausado</option>
-                        <option value="Inadimplente">Inadimplente</option>
-                        <option value="Encerrado">Encerrado</option>
-                    </select>
+                {/* Ticket e Status (Grid) */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="ticket" className="block text-sm font-medium text-gray-700">Valor do Contrato</label>
+                        <input
+                            type="text"
+                            name="ticket_display"
+                            id="ticket"
+                            value={ticketValue}
+                            onChange={handleTicketChange}
+                            placeholder="R$ 0,00"
+                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
+                        <select name="status" id="status" className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2">
+                            <option value="Ativo">Ativo</option>
+                            <option value="Pausado">Pausado</option>
+                            <option value="Inadimplente">Inadimplente</option>
+                            <option value="Encerrado">Encerrado</option>
+                        </select>
+                    </div>
                 </div>
 
-                {error && <p className="text-red-600 text-sm">{error}</p>}
+                {error && (
+                    <div className="rounded-md bg-red-50 p-4">
+                        <div className="flex">
+                            <div className="ml-3">
+                                <h3 className="text-sm font-medium text-red-800">Erro ao salvar</h3>
+                                <div className="mt-2 text-sm text-red-700">
+                                    <p>{error}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
-                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse border-t pt-4">
                     <button
                         type="submit"
                         disabled={loading}
                         className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                     >
-                        {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Salvar'}
+                        {loading ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : null}
+                        {loading ? 'Salvando...' : 'Salvar Cliente'}
                     </button>
                     <button
                         type="button"
                         className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:w-auto sm:text-sm"
-                        onClick={onClose}
+                        onClick={handleClose}
                     >
                         Cancelar
                     </button>

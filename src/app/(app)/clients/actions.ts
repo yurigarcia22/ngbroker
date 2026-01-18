@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-export async function getClients(query?: string, status?: string) {
+export async function getClients(query?: string, status?: string, monthFilter?: string) {
     const supabase = await createClient()
 
     let request = supabase
@@ -18,6 +18,40 @@ export async function getClients(query?: string, status?: string) {
 
     if (status) {
         request = request.eq('status', status)
+    }
+
+    if (monthFilter) {
+        // monthFilter format: "YYYY-MM"
+        // We want clients where [contract_start, contract_end] overlaps with [month_start, month_end]
+        // Overlap logic: Start <= EndOfTarget AND (End >= StartOfTarget OR End IS NULL)
+
+        const startOfMonth = `${monthFilter}-01`
+        // Calculate end of month roughly or use next month starts logic, 
+        // simplified: users usually filter by start date mostly, but let's try to be precise if possible or simple.
+        // Supabase/Postgres logic:
+
+        // Let's filter: Client Start <= End of Selected Month AND (Client End >= Start of Selected Month OR Client End is NULL)
+        // Since we don't calculate "End of Selected Month" easily in simple string builder without library here,
+        // We can just check: contract_start <= last day of month.
+
+        // Actually, easiest way: 
+        // contract_start <= 'YYYY-MM-31' roughly? No.
+
+        // Let's use simple string comparison for start for now or just trust Postgres date types.
+        // Or better: Filter clients that started BEFORE next month and Ended AFTER this month start.
+
+        const [year, month] = monthFilter.split('-').map(Number)
+        const nextMonth = month === 12 ? 1 : month + 1
+        const nextMonthYear = month === 12 ? year + 1 : year
+        const startOfNextMonth = `${nextMonthYear}-${String(nextMonth).padStart(2, '0')}-01`
+
+        request = request.lte('contract_start', startOfNextMonth) // Actually should be strictly less than startOfNextMonth to be in this month? No, start date could be anytime.
+        // Wait, "Active in Month M":
+        // Started before or during M (start < M+1)
+        // Ended after or during M (end >= M) OR End is NULL
+
+        request = request.lt('contract_start', startOfNextMonth)
+        request = request.or(`contract_end.gte.${startOfMonth},contract_end.is.null`)
     }
 
     const { data, error } = await request
@@ -61,6 +95,11 @@ export async function createClientAction(formData: FormData) {
     const segment = formData.get('segment') as string
     const ticket = formData.get('ticket') ? Number(formData.get('ticket')) : null
     const status = formData.get('status') as string
+    const payment_type = formData.get('payment_type') as string
+
+    // Dates
+    const contract_start = formData.get('contract_start') as string || null
+    const contract_end = formData.get('contract_end') as string || null
 
     const { error } = await supabase.from('clients').insert({
         name,
@@ -68,6 +107,9 @@ export async function createClientAction(formData: FormData) {
         segment,
         ticket,
         status,
+        payment_type,
+        contract_start,
+        contract_end,
         owner_user_id: user.id
     })
 
@@ -92,6 +134,22 @@ export async function updateClientStatus(id: string, status: string) {
     }
 
     revalidatePath(`/clients/${id}`)
+    revalidatePath('/clients')
+    return { success: true }
+}
+
+export async function deleteClientAction(id: string) {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', id)
+
+    if (error) {
+        return { error: error.message }
+    }
+
     revalidatePath('/clients')
     return { success: true }
 }

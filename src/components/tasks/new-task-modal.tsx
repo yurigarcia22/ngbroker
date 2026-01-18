@@ -1,101 +1,255 @@
 'use client'
 
-import { useState } from 'react'
-import { Modal } from '@/components/ui/modal'
-import { createTaskAction } from '@/app/(app)/projects/[id]/tasks/actions'
-import { Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, ChevronRight, Check } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { createTask } from '@/lib/db/tasks'
+import { getClients } from '@/app/(app)/clients/actions'
+import { getProjects } from '@/lib/db/projects'
 
-export function NewTaskModal({ isOpen, onClose, projectId, statuses }: { isOpen: boolean; onClose: () => void; projectId: string; statuses: any[] }) {
+interface NewTaskModalProps {
+    isOpen: boolean
+    onClose: () => void
+}
+
+type Step = 'client' | 'project' | 'details'
+
+export function NewTaskModal({ isOpen, onClose }: NewTaskModalProps) {
+    const [step, setStep] = useState<Step>('client')
     const [loading, setLoading] = useState(false)
-    const [error, setError] = useState('')
+    const router = useRouter()
 
-    async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault()
-        setLoading(true)
-        setError('')
+    // Data
+    const [clients, setClients] = useState<any[]>([])
+    const [projects, setProjects] = useState<any[]>([])
 
-        const formData = new FormData(event.currentTarget)
-        formData.append('projectId', projectId)
+    // Selection
+    const [selectedClient, setSelectedClient] = useState<any>(null)
+    const [selectedProject, setSelectedProject] = useState<any>(null)
 
-        // If no status select, default to first one
-        if (!formData.get('statusId') && statuses.length > 0) {
-            formData.append('statusId', statuses[0].id)
+    // Form
+    const [title, setTitle] = useState('')
+    const [description, setDescription] = useState('')
+    const [priority, setPriority] = useState('Média')
+    const [dueDate, setDueDate] = useState('')
+
+    // Load clients on open
+    useEffect(() => {
+        if (isOpen) {
+            setLoading(true)
+            getClients().then(data => {
+                setClients(data || [])
+                setLoading(false)
+            })
+            // Reset
+            setStep('client')
+            setSelectedClient(null)
+            setSelectedProject(null)
+            setTitle('')
         }
+    }, [isOpen])
 
-        const result = await createTaskAction(formData)
-
+    // Load projects when client selected
+    const handleSelectClient = async (client: any) => {
+        setSelectedClient(client)
+        setLoading(true)
+        const data = await getProjects(client.id)
+        setProjects(data || [])
         setLoading(false)
+        setStep('project')
+    }
 
-        if (result?.error) {
-            setError(result.error as string)
-        } else {
+    const handleSelectProject = (project: any) => {
+        setSelectedProject(project)
+        setStep('details')
+    }
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setLoading(true)
+
+        try {
+            await createTask({
+                projectId: selectedProject.id,
+                title,
+                description,
+                priority,
+                dueDate: dueDate || null,
+                statusId: selectedProject.project_statuses?.find((s: any) => s.is_default)?.id
+            })
+
+            router.refresh()
             onClose()
+        } catch (error) {
+            console.error(error)
+            alert('Erro ao criar tarefa')
+        } finally {
+            setLoading(false)
         }
     }
 
+    if (!isOpen) return null
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Nova Tarefa">
-            <form onSubmit={onSubmit} className="space-y-4 mt-4">
-                <div>
-                    <label htmlFor="title" className="block text-sm font-medium text-gray-700">Título</label>
-                    <input type="text" name="title" id="title" required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
-                </div>
-
-                <div>
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">Descrição</label>
-                    <textarea name="description" id="description" rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl h-[600px] flex flex-col">
+                {/* Header */}
+                <div className="mb-4 flex items-center justify-between">
                     <div>
-                        <label htmlFor="priority" className="block text-sm font-medium text-gray-700">Prioridade</label>
-                        <select name="priority" id="priority" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
-                            <option value="Baixa">Baixa</option>
-                            <option value="Média" selected>Média</option>
-                            <option value="Alta">Alta</option>
-                            <option value="Urgente">Urgente</option>
-                        </select>
+                        <h2 className="text-lg font-semibold text-gray-900">Nova Tarefa</h2>
+                        <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                            <span className={step === 'client' ? 'font-medium text-indigo-600' : ''}>Cliente</span>
+                            <ChevronRight className="h-3 w-3" />
+                            <span className={step === 'project' ? 'font-medium text-indigo-600' : ''}>Projeto</span>
+                            <ChevronRight className="h-3 w-3" />
+                            <span className={step === 'details' ? 'font-medium text-indigo-600' : ''}>Detalhes</span>
+                        </div>
                     </div>
-                    <div>
-                        <label htmlFor="statusId" className="block text-sm font-medium text-gray-700">Status Inicial</label>
-                        <select name="statusId" id="statusId" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border">
-                            {statuses.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto min-h-0 py-2">
+                    {loading && (
+                        <div className="flex justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                        </div>
+                    )}
+
+                    {!loading && step === 'client' && (
+                        <div className="space-y-2">
+                            <input
+                                type="text"
+                                placeholder="Buscar cliente..."
+                                className="w-full rounded-md border-gray-300 text-sm mb-4"
+                            />
+                            {clients.map(client => (
+                                <button
+                                    key={client.id}
+                                    onClick={() => handleSelectClient(client)}
+                                    className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 text-left transition-colors"
+                                >
+                                    <span className="font-medium text-gray-900">{client.name}</span>
+                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                </button>
                             ))}
-                        </select>
-                    </div>
+                            {clients.length === 0 && <p className="text-center text-gray-500 py-8">Nenhum cliente encontrado.</p>}
+                        </div>
+                    )}
+
+                    {!loading && step === 'project' && (
+                        <div className="space-y-2">
+                            <div className="mb-4 p-2 bg-indigo-50 text-indigo-700 rounded text-sm font-medium">
+                                Cliente: {selectedClient?.name}
+                            </div>
+                            {projects.map(project => (
+                                <button
+                                    key={project.id}
+                                    onClick={() => handleSelectProject(project)}
+                                    className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-200 text-left transition-colors"
+                                >
+                                    <div>
+                                        <span className="font-medium text-gray-900 block">{project.name}</span>
+                                        <span className="text-xs text-gray-500">{project.scope_type}</span>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                </button>
+                            ))}
+                            {projects.length === 0 && (
+                                <div className="text-center py-8">
+                                    <p className="text-gray-500 mb-4">Nenhum projeto encontrado.</p>
+                                    <button className="text-indigo-600 text-sm hover:underline">Criar novo projeto</button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {!loading && step === 'details' && (
+                        <form id="new-task-form" onSubmit={handleSubmit} className="space-y-4">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-4">
+                                <span className="bg-gray-100 px-2 py-1 rounded">{selectedClient?.name}</span>
+                                <span>/</span>
+                                <span className="bg-gray-100 px-2 py-1 rounded">{selectedProject?.name}</span>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">O que precisa ser feito?</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    placeholder="Ex: Criar layout da home"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Prioridade</label>
+                                    <select
+                                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                        value={priority}
+                                        onChange={(e) => setPriority(e.target.value)}
+                                    >
+                                        <option value="Baixa">Baixa</option>
+                                        <option value="Média">Média</option>
+                                        <option value="Alta">Alta</option>
+                                        <option value="Urgente">Urgente</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Prazo</label>
+                                    <input
+                                        type="date"
+                                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                        value={dueDate}
+                                        onChange={(e) => setDueDate(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Descrição</label>
+                                <textarea
+                                    rows={3}
+                                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    placeholder="Detalhes adicionais..."
+                                />
+                            </div>
+                        </form>
+                    )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700">Prazo (opcional)</label>
-                        <input type="date" name="dueDate" id="dueDate" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
-                    </div>
-                    <div>
-                        <label htmlFor="tags" className="block text-sm font-medium text-gray-700">Tags (separar por vírgula)</label>
-                        <input type="text" name="tags" id="tags" placeholder="Ex: dev, bug" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
-                    </div>
-                </div>
+                {/* Footer */}
+                <div className="mt-4 flex justify-between border-t pt-4">
+                    {step !== 'client' ? (
+                        <button
+                            type="button"
+                            onClick={() => setStep(step === 'details' ? 'project' : 'client')}
+                            className="text-sm text-gray-600 hover:text-gray-900"
+                        >
+                            Voltar
+                        </button>
+                    ) : <div></div>}
 
-                {error && <p className="text-red-600 text-sm">{error}</p>}
-
-                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
-                    >
-                        {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Salvar'}
-                    </button>
-                    <button
-                        type="button"
-                        className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:w-auto sm:text-sm"
-                        onClick={onClose}
-                    >
-                        Cancelar
-                    </button>
+                    {step === 'details' && (
+                        <button
+                            type="submit"
+                            form="new-task-form"
+                            disabled={loading || !title}
+                            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                            Criar Tarefa
+                        </button>
+                    )}
                 </div>
-            </form>
-        </Modal>
+            </div>
+        </div>
     )
 }

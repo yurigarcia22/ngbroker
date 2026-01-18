@@ -1,85 +1,160 @@
 'use client'
 
-import { useState } from 'react'
-import { Modal } from '@/components/ui/modal'
-import { createProjectAction } from '@/app/(app)/projects/actions'
-import { Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
+import { createProject, createProjectStatus } from '@/lib/db/projects'
+import { useRouter } from 'next/navigation'
 
-export function NewProjectModal({ isOpen, onClose, clientId }: { isOpen: boolean; onClose: () => void; clientId: string }) {
+interface NewProjectModalProps {
+    isOpen: boolean
+    onClose: () => void
+    clientId?: string
+    clients?: any[]
+}
+
+export function NewProjectModal({ isOpen, onClose, clientId: preselectedClientId, clients = [] }: NewProjectModalProps) {
+    const [name, setName] = useState('')
+    const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || '')
+    const [scopeType, setScopeType] = useState('Recorrente')
+    const [scopeCustom, setScopeCustom] = useState('')
     const [loading, setLoading] = useState(false)
-    const [error, setError] = useState('')
-    const [scopeType, setScopeType] = useState('Personalizado')
+    const router = useRouter()
 
-    async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault()
+    useEffect(() => {
+        if (preselectedClientId) {
+            setSelectedClientId(preselectedClientId)
+        } else if (clients.length > 0 && !selectedClientId) {
+            setSelectedClientId(clients[0].id)
+        }
+    }, [preselectedClientId, clients, isOpen])
+
+    if (!isOpen) return null
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedClientId) {
+            alert('Selecione um cliente')
+            return
+        }
         setLoading(true)
-        setError('')
 
-        const formData = new FormData(event.currentTarget)
-        formData.append('clientId', clientId)
+        try {
+            // 1. Create Project
+            const result = await createProject({
+                clientId: selectedClientId,
+                name,
+                scopeType,
+                scopeCustom: scopeType === 'Outro' ? scopeCustom : undefined
+            })
 
-        const result = await createProjectAction(formData)
+            if (result.error) {
+                alert('Erro ao criar projeto: ' + result.error)
+                return
+            }
 
-        setLoading(false)
+            const projectId = result.data.id
 
-        if (result?.error) {
-            setError(result.error)
-        } else {
+
+
+            // Success
+            setName('')
+            setScopeType('Recorrente')
+            setScopeCustom('')
+            if (!preselectedClientId) setSelectedClientId('') // Reset if not fixed
             onClose()
+            router.refresh()
+        } catch (error) {
+            console.error(error)
+            alert('Erro inesperado ao criar projeto.')
+        } finally {
+            setLoading(false)
         }
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Novo Projeto">
-            <form onSubmit={onSubmit} className="space-y-4 mt-4">
-                <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome do Projeto</label>
-                    <input type="text" name="name" id="name" required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-gray-900">Novo Projeto</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
+                        <X className="h-5 w-5" />
+                    </button>
                 </div>
 
-                <div>
-                    <label htmlFor="scopeType" className="block text-sm font-medium text-gray-700">Tipo de Escopo</label>
-                    <select
-                        name="scopeType"
-                        id="scopeType"
-                        value={scopeType}
-                        onChange={(e) => setScopeType(e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                    >
-                        <option value="Personalizado">Personalizado</option>
-                        <option value="Treinamento">Treinamento</option>
-                        <option value="Tráfego">Tráfego</option>
-                        <option value="CRM">CRM</option>
-                        <option value="IA">IA</option>
-                    </select>
-                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {!preselectedClientId && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Cliente</label>
+                            <select
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                value={selectedClientId}
+                                onChange={(e) => setSelectedClientId(e.target.value)}
+                                required
+                            >
+                                <option value="" disabled>Selecione um cliente...</option>
+                                {clients.map(client => (
+                                    <option key={client.id} value={client.id}>{client.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
-                {scopeType === 'Personalizado' && (
                     <div>
-                        <label htmlFor="scopeCustom" className="block text-sm font-medium text-gray-700">Detalhes do Escopo</label>
-                        <textarea name="scopeCustom" id="scopeCustom" rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border" />
+                        <label className="block text-sm font-medium text-gray-700">Nome do Projeto</label>
+                        <input
+                            type="text"
+                            required
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            placeholder="Ex: Site Institucional"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                        />
                     </div>
-                )}
 
-                {error && <p className="text-red-600 text-sm">{error}</p>}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Tipo de Escopo</label>
+                        <select
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            value={scopeType}
+                            onChange={(e) => setScopeType(e.target.value)}
+                        >
+                            <option value="Recorrente">Recorrente (Fee Mensal)</option>
+                            <option value="Fechado">Escopo Fechado (Projeto)</option>
+                            <option value="Horas">Banco de Horas</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
 
-                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
-                    >
-                        {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Salvar'}
-                    </button>
-                    <button
-                        type="button"
-                        className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:w-auto sm:text-sm"
-                        onClick={onClose}
-                    >
-                        Cancelar
-                    </button>
-                </div>
-            </form>
-        </Modal>
+                    {scopeType === 'Outro' && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Detalhe do Escopo</label>
+                            <input
+                                type="text"
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                value={scopeCustom}
+                                onChange={(e) => setScopeCustom(e.target.value)}
+                            />
+                        </div>
+                    )}
+
+                    <div className="mt-6 flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+                        >
+                            {loading ? 'Criando...' : 'Criar Projeto'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     )
 }

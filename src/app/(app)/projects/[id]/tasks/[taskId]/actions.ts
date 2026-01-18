@@ -1,19 +1,21 @@
 'use server'
 
-import { addChecklistItem, toggleChecklistItem, addComment, addTimeEntry, updateTask } from '@/lib/db/tasks'
 import { revalidatePath } from 'next/cache'
-
-export async function toggleChecklistItemAction(itemId: string, isDone: boolean, path: string) {
-    await toggleChecklistItem(itemId, isDone)
-    revalidatePath(path)
-}
+import { addChecklistItem, toggleChecklistItem, addComment, addTimeEntry } from '@/lib/db/tasks'
 
 export async function addChecklistItemAction(formData: FormData) {
     const taskId = formData.get('taskId') as string
     const title = formData.get('title') as string
     const path = formData.get('path') as string
 
+    if (!taskId || !title) return { error: 'Missing fields' }
+
     await addChecklistItem(taskId, title)
+    revalidatePath(path)
+}
+
+export async function toggleChecklistItemAction(itemId: string, isDone: boolean, path: string) {
+    await toggleChecklistItem(itemId, isDone)
     revalidatePath(path)
 }
 
@@ -22,21 +24,20 @@ export async function addCommentAction(formData: FormData) {
     const body = formData.get('body') as string
     const path = formData.get('path') as string
 
+    if (!taskId || !body) return { error: 'Missing fields' }
+
     await addComment(taskId, body)
     revalidatePath(path)
 }
 
 export async function addTimeEntryAction(formData: FormData) {
     const taskId = formData.get('taskId') as string
-    const minutes = parseInt(formData.get('minutes') as string)
+    const minutes = Number(formData.get('minutes'))
     const notes = formData.get('notes') as string
     const path = formData.get('path') as string
 
-    await addTimeEntry(taskId, minutes, notes)
-    revalidatePath(path)
-}
+    if (!taskId || !minutes) return { error: 'Missing fields' }
 
-export async function completeTaskAction(taskId: string, statusId: string, path: string) {
-    await updateTask(taskId, { status_id: statusId })
+    await addTimeEntry(taskId, minutes, notes)
     revalidatePath(path)
 }

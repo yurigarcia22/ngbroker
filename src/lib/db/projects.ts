@@ -1,3 +1,5 @@
+'use server'
+
 import { createClient } from '@/lib/supabase/server'
 
 export async function getProjects(clientId: string) {
@@ -126,4 +128,65 @@ export async function deleteProjectStatus(id: string) {
         .eq('id', id)
 
     return { error }
+}
+
+export async function getAllProjects() {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('projects')
+        .select(`
+      *,
+      client:clients(id, name),
+      project_statuses (
+        id,
+        name,
+        sort_order,
+        is_default
+      ),
+      tasks (
+        id,
+        due_date,
+        status_id,
+        status:project_statuses(name),
+        assignees:task_assignees(
+            user:profiles(id, name, avatar_url)
+        )
+      )
+    `)
+        .order('created_at', { ascending: false })
+
+    if (error) {
+        console.error('Error fetching all projects:', error)
+        return []
+    }
+
+    return data
+}
+
+export async function getProjectTimesheet(projectId: string) {
+    const supabase = await createClient()
+
+    // Query time entries joined with users via tasks
+    // Since Supabase doesn't support deep joins easily from child to parent's parent in one go for filtering,
+    // we query time_entries and filter by task's project_id
+
+    // Actually, simple way: select * from time_entries, join tasks!inner(project_id)
+
+    const { data, error } = await supabase
+        .from('time_entries')
+        .select(`
+            *,
+            user:profiles(id, name),
+            task:tasks!inner(id, title, project_id)
+        `)
+        .eq('task.project_id', projectId)
+        .order('entry_date', { ascending: false })
+
+    if (error) {
+        console.error('Error fetching timesheet:', error)
+        return []
+    }
+
+    return data
 }

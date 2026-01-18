@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/ui/page-header'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Users, Search, Plus, Filter } from 'lucide-react'
-import { getClients } from './actions'
+import { Users, Search, Plus, Filter, Trash2 } from 'lucide-react'
+import { getClients, deleteClientAction } from './actions'
 import { StatusBadge } from '@/components/clients/status-badge'
 import Link from 'next/link'
+import { ClientStats } from '@/components/clients/client-stats'
 import { NewClientModal } from '@/components/clients/new-client-modal'
 
 export default function ClientsPage() {
@@ -14,11 +15,13 @@ export default function ClientsPage() {
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState('')
+    const [monthFilter, setMonthFilter] = useState('') // Format "YYYY-MM"
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [deletingId, setDeletingId] = useState<string | null>(null)
 
     const fetchClients = async () => {
         setLoading(true)
-        const data = await getClients(search, statusFilter)
+        const data = await getClients(search, statusFilter, monthFilter)
         setClients(data || [])
         setLoading(false)
     }
@@ -29,12 +32,28 @@ export default function ClientsPage() {
             fetchClients()
         }, 300)
         return () => clearTimeout(timer)
-    }, [search, statusFilter])
+    }, [search, statusFilter, monthFilter])
 
     // Refetch when modal closes (in case a client was added)
     const handleModalClose = () => {
         setIsModalOpen(false)
         fetchClients()
+    }
+
+    const handleDelete = async (e: React.MouseEvent, id: string) => {
+        e.preventDefault() // Prevent navigation if inside a link (though button is separate)
+        if (!confirm('Tem certeza que deseja excluir este cliente? Toda a informação relacionada a ele será perdida.')) return
+
+        setDeletingId(id)
+        const result = await deleteClientAction(id)
+        setDeletingId(null)
+
+        if (result.success) {
+            // Optimistically remove or refetch
+            setClients(prev => prev.filter(c => c.id !== id))
+        } else {
+            alert('Erro ao excluir cliente')
+        }
     }
 
     return (
@@ -49,6 +68,8 @@ export default function ClientsPage() {
                 </button>
             </PageHeader>
 
+            {!loading && <ClientStats clients={clients} />}
+
             <div className="mb-6 flex flex-col gap-4 sm:flex-row">
                 <div className="relative flex-1">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -60,6 +81,14 @@ export default function ClientsPage() {
                         className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <div className="relative w-full sm:w-48">
+                    <input
+                        type="month"
+                        className="block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                        value={monthFilter}
+                        onChange={(e) => setMonthFilter(e.target.value)}
                     />
                 </div>
                 <div className="relative w-full sm:w-48">
@@ -114,7 +143,7 @@ export default function ClientsPage() {
                                     Tipo
                                 </th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                                    Ticket Médio
+                                    Valor Contrato
                                 </th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                                     Status
@@ -144,15 +173,32 @@ export default function ClientsPage() {
                                         </span>
                                     </td>
                                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                                        {client.ticket ? `R$ ${client.ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                                        <div className="flex flex-col">
+                                            <span className="font-medium text-gray-900">
+                                                {client.ticket ? `R$ ${client.ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                                            </span>
+                                            <span className="text-xs text-gray-400">
+                                                {client.payment_type === 'Recorrente' ? 'MRR' : 'Único'}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td className="whitespace-nowrap px-6 py-4">
                                         <StatusBadge status={client.status} />
                                     </td>
                                     <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                                        <Link href={`/clients/${client.id}`} className="text-indigo-600 hover:text-indigo-900">
-                                            Ver detalhes
-                                        </Link>
+                                        <div className="flex items-center justify-end gap-3">
+                                            <Link href={`/clients/${client.id}`} className="text-indigo-600 hover:text-indigo-900">
+                                                Ver detalhes
+                                            </Link>
+                                            <button
+                                                onClick={(e) => handleDelete(e, client.id)}
+                                                disabled={deletingId === client.id}
+                                                className="text-red-400 hover:text-red-600 disabled:opacity-50"
+                                                title="Excluir Cliente"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
