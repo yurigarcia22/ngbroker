@@ -10,11 +10,13 @@ import { getProjects } from '@/lib/db/projects'
 interface NewTaskModalProps {
     isOpen: boolean
     onClose: () => void
+    projectId?: string
+    statuses?: any[]
 }
 
 type Step = 'client' | 'project' | 'details'
 
-export function NewTaskModal({ isOpen, onClose }: NewTaskModalProps) {
+export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskModalProps) {
     const [step, setStep] = useState<Step>('client')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
