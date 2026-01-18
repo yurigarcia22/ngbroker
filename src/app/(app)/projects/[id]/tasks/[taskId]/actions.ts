@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { addChecklistItem, toggleChecklistItem, addComment, addTimeEntry } from '@/lib/db/tasks'
+import { addChecklistItem, toggleChecklistItem, createComment, addTimeEntry } from '@/lib/db/tasks'
 
 export async function addChecklistItemAction(formData: FormData) {
     const taskId = formData.get('taskId') as string
@@ -26,7 +26,7 @@ export async function addCommentAction(formData: FormData) {
 
     if (!taskId || !body) return { error: 'Missing fields' }
 
-    await addComment(taskId, body)
+    await createComment(taskId, body)
     revalidatePath(path)
 }
 
