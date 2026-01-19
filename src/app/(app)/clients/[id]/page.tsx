@@ -163,7 +163,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                                         <dd className="mt-1 text-sm text-gray-900">{client.segment || '-'}</dd>
                                     </div>
                                     <div className="sm:col-span-1">
-                                        <dt className="text-sm font-medium text-gray-500">Ticket Médio</dt>
+                                        <dt className="text-sm font-medium text-gray-500">Valor de Contrato</dt>
                                         <dd className="mt-1 text-sm text-gray-900 flex items-center gap-1">
                                             <Wallet className="w-4 h-4 text-gray-400" />
                                             {client.ticket ? `R$ ${typeof client.ticket === 'number' ? client.ticket.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : parseFloat(client.ticket).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}

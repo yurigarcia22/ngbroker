@@ -27,9 +27,12 @@ export function EditClientModal({ isOpen, onClose, client }: { isOpen: boolean; 
     const [selectedSegment, setSelectedSegment] = useState('')
     const [ticketValue, setTicketValue] = useState('')
 
+    const [selectedType, setSelectedType] = useState('PJ')
+
     // Initial values
     useEffect(() => {
         if (client) {
+            setSelectedType(client.type || 'PJ')
             setSelectedSegment(PREDEFINED_SEGMENTS.includes(client.segment) ? client.segment : '')
             if (client.segment && !PREDEFINED_SEGMENTS.includes(client.segment)) {
                 setSegmentMode('create')
@@ -111,8 +114,8 @@ export function EditClientModal({ isOpen, onClose, client }: { isOpen: boolean; 
                         />
                     </div>
                     <div>
-                        <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700">CNPJ</label>
-                        <input type="text" name="cnpj" id="cnpj" defaultValue={client.cnpj} placeholder="00.000.000/0000-00"
+                        <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700">{selectedType === 'PJ' ? 'CNPJ' : 'CPF'}</label>
+                        <input type="text" name="cnpj" id="cnpj" defaultValue={client.cnpj} placeholder={selectedType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
                             className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
                         />
                     </div>
@@ -121,7 +124,12 @@ export function EditClientModal({ isOpen, onClose, client }: { isOpen: boolean; 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="type" className="block text-sm font-medium text-gray-700">Tipo</label>
-                        <select name="type" id="type" defaultValue={client.type} className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2">
+                        <select
+                            name="type"
+                            id="type"
+                            value={selectedType}
+                            onChange={(e) => setSelectedType(e.target.value)}
+                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2">
                             <option value="PJ">Pessoa Jurídica</option>
                             <option value="PF">Pessoa Física</option>
                         </select>

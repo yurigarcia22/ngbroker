@@ -33,7 +33,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
     return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
             <div
-                className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                className="fixed inset-0 transition-opacity"
                 onClick={onClose}
                 aria-hidden="true"
             />

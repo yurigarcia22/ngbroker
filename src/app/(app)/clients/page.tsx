@@ -68,7 +68,7 @@ export default function ClientsPage() {
                 </button>
             </PageHeader>
 
-            {!loading && <ClientStats clients={clients} />}
+            {!loading && <ClientStats clients={clients} monthFilter={monthFilter} />}
 
             <div className="mb-6 flex flex-col gap-4 sm:flex-row">
                 <div className="relative flex-1">
@@ -143,7 +143,7 @@ export default function ClientsPage() {
                                     Tipo
                                 </th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                                    Valor Contrato
+                                    Valor de Contrato
                                 </th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                                     Status

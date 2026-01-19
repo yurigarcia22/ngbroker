@@ -93,7 +93,7 @@ export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskMo
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl h-[600px] flex flex-col">
                 {/* Header */}
                 <div className="mb-4 flex items-center justify-between">

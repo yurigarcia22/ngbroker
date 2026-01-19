@@ -107,7 +107,12 @@ export async function createClientAction(formData: FormData) {
     const contractFile = formData.get('contract_file') as File
 
     if (contractFile && contractFile.size > 0) {
-        const filename = `${Date.now()}-${contractFile.name}`
+        const sanitizedName = contractFile.name
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9.-]/g, '_')
+
+        const filename = `${Date.now()}-${sanitizedName}`
         // Assuming 'documents-files' bucket exists as per migration check
         const { data: uploadData, error: uploadError } = await supabase.storage
             .from('documents-files')
@@ -211,7 +216,13 @@ export async function updateClientAction(formData: FormData) {
     // Handle File Replacement
     const contractFile = formData.get('contract_file') as File
     if (contractFile && contractFile.size > 0) {
-        const filename = `${Date.now()}-${contractFile.name}`
+        // Sanitize filename: remove accents and special chars
+        const sanitizedName = contractFile.name
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9.-]/g, '_')
+
+        const filename = `${Date.now()}-${sanitizedName}`
         const { error: uploadError } = await supabase.storage
             .from('documents-files')
             .upload(`contracts/${user.id}/${filename}`, contractFile)

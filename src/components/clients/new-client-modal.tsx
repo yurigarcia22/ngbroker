@@ -21,6 +21,7 @@ const PREDEFINED_SEGMENTS = [
 export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [selectedType, setSelectedType] = useState('PJ')
 
     // Form States
     const [segmentMode, setSegmentMode] = useState<'select' | 'create'>('select')
@@ -91,7 +92,7 @@ export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
     return (
         <Modal isOpen={isOpen} onClose={handleClose} title="Novo Cliente">
             <form onSubmit={onSubmit} className="space-y-4 mt-4">
-                {/* Nome e CNPJ */}
+                {/* Nome e CNPJ/CPF */}
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome</label>
@@ -105,12 +106,12 @@ export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
                         />
                     </div>
                     <div>
-                        <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700">CNPJ</label>
+                        <label htmlFor="cnpj" className="block text-sm font-medium text-gray-700">{selectedType === 'PJ' ? 'CNPJ' : 'CPF'}</label>
                         <input
                             type="text"
                             name="cnpj"
                             id="cnpj"
-                            placeholder="00.000.000/0000-00"
+                            placeholder={selectedType === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
                             className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
                         />
                     </div>
@@ -120,7 +121,13 @@ export function NewClientModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="type" className="block text-sm font-medium text-gray-700">Tipo</label>
-                        <select name="type" id="type" className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2">
+                        <select
+                            name="type"
+                            id="type"
+                            value={selectedType}
+                            onChange={(e) => setSelectedType(e.target.value)}
+                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2"
+                        >
                             <option value="PJ">Pessoa Jurídica</option>
                             <option value="PF">Pessoa Física</option>
                         </select>

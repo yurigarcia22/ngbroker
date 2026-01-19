@@ -2,9 +2,10 @@ import { TrendingUp, Users, DollarSign } from 'lucide-react'
 
 interface ClientStatsProps {
     clients: any[]
+    monthFilter?: string
 }
 
-export function ClientStats({ clients }: ClientStatsProps) {
+export function ClientStats({ clients, monthFilter }: ClientStatsProps) {
     // Calculate metrics
     const activeClients = clients.filter(c => c.status === 'Ativo')
 
@@ -13,7 +14,17 @@ export function ClientStats({ clients }: ClientStatsProps) {
         .reduce((sum, client) => sum + (Number(client.ticket) || 0), 0)
 
     const oneOff = activeClients
-        .filter(c => c.payment_type === 'Pontual')
+        .filter(c => {
+            if (c.payment_type !== 'Pontual') return false
+
+            // If filtering by month, only count if contract started in that month
+            if (monthFilter && c.contract_start) {
+                // monthFilter is "YYYY-MM", contract_start is "YYYY-MM-DD"
+                return c.contract_start.startsWith(monthFilter)
+            }
+
+            return true
+        })
         .reduce((sum, client) => sum + (Number(client.ticket) || 0), 0)
 
     const formatCurrency = (value: number) => {
