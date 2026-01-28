@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Send, Paperclip, X, User, Plus, Calendar, Tag, Clock } from 'lucide-react'
+import { Send, Paperclip, X, User, Plus, Calendar, Tag, Clock, RefreshCcw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { createComment, getTaskComments, getTask, getUsers, updateTask, addTimeEntry, updateTaskAssignees } from '@/lib/db/tasks'
 import { getTags, createTag, addTagToTask, removeTagFromTask } from '@/lib/db/tags'
@@ -172,6 +172,41 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         if (onUpdate) onUpdate()
     }
 
+    const handleDateChange = async (date: string) => {
+        if (!task) return
+        await updateTask(task.id, { due_date: date })
+        setTask({ ...task, due_date: date })
+        // Create system comment
+        await createComment(task.id, `alterou o prazo para **${format(new Date(date + 'T12:00:00'), 'dd/MM/yy')}**`)
+        if (onUpdate) onUpdate()
+    }
+
+    const handleCompleteCycle = async () => {
+        if (!task || !task.is_recurring) return
+
+        const feedback = window.prompt("Deixe um feedback para este ciclo (opcional):")
+        if (feedback === null) return // Cancelled
+
+        // 1. Add comment/feedback
+        if (feedback) {
+            await createComment(task.id, `**Ciclo Concluído:** ${feedback}`)
+        } else {
+            await createComment(task.id, `**Ciclo Concluído**`)
+        }
+
+        // 2. Reschedule to next day
+        const today = new Date()
+        const tomorrow = new Date(today)
+        tomorrow.setDate(today.getDate() + 1)
+        const newDateStr = format(tomorrow, 'yyyy-MM-dd') // Safe local format
+
+        await updateTask(task.id, { due_date: newDateStr })
+
+        // 3. Update local state
+        setTask({ ...task, due_date: newDateStr })
+        if (onUpdate) onUpdate()
+    }
+
     if (!taskId) return <div className="hidden" /> // Should likely not render
     if (!task) return <div className="w-[500px] border-l bg-white p-8">Carregando...</div>
 
@@ -189,9 +224,20 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                         {task.project?.client?.name} / {task.project?.name}
                     </span>
                 </div>
-                <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                    <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                    {task.is_recurring && (
+                        <button
+                            onClick={handleCompleteCycle}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded text-xs font-medium transition-colors border border-green-200"
+                        >
+                            <RefreshCcw className="h-3.5 w-3.5" />
+                            Concluir Ciclo
+                        </button>
+                    )}
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
             </div>
 
             {/* Fixed Task Info (Title + Compact Metadata) */}
@@ -223,9 +269,17 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             Prazo
                         </label>
-                        <div className="flex items-center gap-2 text-xs font-medium text-gray-900 bg-gray-50 py-1.5 px-2 rounded border border-transparent hover:border-gray-200">
-                            <Calendar className="h-3 w-3 text-gray-400" />
-                            <span className="truncate">{task.due_date ? format(new Date(task.due_date), 'dd/MM/yy') : '---'}</span>
+                        <div className="relative group">
+                            <div className="flex items-center gap-2 text-xs font-medium text-gray-900 bg-gray-50 py-1.5 px-2 rounded border border-transparent hover:border-gray-200 cursor-pointer">
+                                <Calendar className="h-3 w-3 text-gray-400" />
+                                <input
+                                    type="date"
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                                    value={task.due_date || ''}
+                                    onChange={(e) => handleDateChange(e.target.value)}
+                                />
+                                <span className="truncate">{task.due_date ? format(new Date(task.due_date + 'T12:00:00'), 'dd/MM/yy') : 'Definir'}</span>
+                            </div>
                         </div>
                     </div>
 

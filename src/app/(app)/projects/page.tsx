@@ -8,20 +8,28 @@ import { getAllProjects } from '@/lib/db/projects'
 import { getClients } from '../clients/actions'
 import { Plus } from 'lucide-react'
 
+import { getCurrentUser, getUsers } from '@/lib/db/profiles'
+
 export default function ProjectsPage() {
     const [projects, setProjects] = useState<any[]>([])
     const [clients, setClients] = useState<any[]>([])
+    const [users, setUsers] = useState<any[]>([])
+    const [currentUser, setCurrentUser] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
 
     const fetchData = async () => {
         setLoading(true)
-        const [projectsData, clientsData] = await Promise.all([
+        const [projectsData, clientsData, usersData, currentUserData] = await Promise.all([
             getAllProjects(),
-            getClients()
+            getClients(undefined, 'Ativo'),
+            getUsers(),
+            getCurrentUser()
         ])
         setProjects(projectsData || [])
         setClients(clientsData || [])
+        setUsers(usersData || [])
+        setCurrentUser(currentUserData)
         setLoading(false)
     }
 
@@ -66,6 +74,8 @@ export default function ProjectsPage() {
                 isOpen={isModalOpen}
                 onClose={handleModalClose}
                 clients={clients}
+                users={users}
+                currentUser={currentUser}
             />
         </>
     )

@@ -63,10 +63,12 @@ export function KanbanCard({ task, index, onClick }: KanbanCardProps) {
                         </div>
 
                         {task.due_date && (
-                            <div className={`flex items-center text-xs ${new Date(task.due_date) < new Date() ? 'text-red-600 font-medium' : 'text-gray-500'
+                            <div className={`flex items-center text-xs ${new Date(task.due_date + 'T23:59:59') < new Date()
+                                    ? 'text-red-600 font-medium'
+                                    : 'text-gray-500'
                                 }`}>
                                 <Calendar className="h-3 w-3 mr-1" />
-                                {format(new Date(task.due_date), 'd MMM', { locale: ptBR })}
+                                {format(new Date(task.due_date + 'T12:00:00'), 'd MMM', { locale: ptBR })}
                             </div>
                         )}
                     </div>

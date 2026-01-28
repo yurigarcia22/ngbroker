@@ -61,7 +61,7 @@ export function TaskList({ tasks, statuses, projectId, onCreateNew }: TaskListPr
                                         <div className="flex items-center text-sm text-gray-500 mr-4">
                                             <Calendar className="mr-1.5 h-4 w-4 flex-shrink-0 text-gray-400" />
                                             <p>
-                                                {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'Sem prazo'}
+                                                {task.due_date ? new Date(task.due_date + 'T12:00:00').toLocaleDateString() : 'Sem prazo'}
                                             </p>
                                         </div>
                                         <div className="flex items-center text-sm text-gray-500 mr-4">

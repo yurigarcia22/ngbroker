@@ -3,6 +3,8 @@ import { Folder, Clock, AlertTriangle, Calendar, MoreHorizontal } from 'lucide-r
 import Link from 'next/link'
 import { format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { deleteProject } from '@/lib/db/projects'
+import { useRouter } from 'next/navigation'
 
 interface ProjectCardProps {
     project: any
@@ -101,6 +103,20 @@ export function ProjectCard({ project }: ProjectCardProps) {
                                 <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
                                     Aplicar template
                                 </button>
+                                <button
+                                    onClick={async () => {
+                                        if (window.confirm('Tem certeza que deseja excluir este projeto?')) {
+                                            const res = await deleteProject(project.id)
+                                            if (res?.error) {
+                                                alert('Erro ao excluir projeto')
+                                            }
+                                        }
+                                        setIsMenuOpen(false)
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                >
+                                    Excluir
+                                </button>
                             </div>
                         </>
                     )}
@@ -162,6 +178,6 @@ export function ProjectCard({ project }: ProjectCardProps) {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     )
 }

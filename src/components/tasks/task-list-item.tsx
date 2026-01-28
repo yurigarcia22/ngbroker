@@ -1,4 +1,4 @@
-import { formatDistanceToNow, format } from 'date-fns'
+import { formatDistanceToNow, format, differenceInCalendarDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Calendar } from 'lucide-react'
 
@@ -9,7 +9,7 @@ interface TaskListItemProps {
 }
 
 export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
-    const daysOverdue = task.due_date ? Math.floor((new Date().getTime() - new Date(task.due_date).getTime()) / (1000 * 3600 * 24)) : 0
+    const daysOverdue = task.due_date ? differenceInCalendarDays(new Date(), new Date(task.due_date + 'T12:00:00')) : 0
     const isActuallyOverdue = daysOverdue > 0
 
     // Status Colors
@@ -40,22 +40,47 @@ export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
                 <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
                         <div className="min-w-0 flex-1 mr-2">
-                            {/* Top Metadata: Priority & Date */}
-                            <div className="flex items-center gap-2 text-[10px] font-medium text-gray-500 mb-0.5">
-                                <div className={`h-1.5 w-1.5 rounded-full ${task.priority === 'Urgente' ? 'bg-red-500' : task.priority === 'Alta' ? 'bg-orange-500' : 'bg-gray-300'}`} />
-                                <span className={isActuallyOverdue ? 'text-red-500 font-semibold' : ''}>
-                                    {task.due_date && format(new Date(task.due_date), "dd 'de' MMM", { locale: ptBR })}
-                                </span>
-                                {isActuallyOverdue && (
-                                    <span className="text-red-600 bg-red-50 px-1.5 py-0.5 rounded text-[10px] border border-red-100 flex items-center gap-1">
-                                        <Calendar className="h-3 w-3" />
-                                        {daysOverdue}d atrasado
+                            {/* Date Header: Big Due Date + Creation Date */}
+                            <div className="flex items-baseline justify-between mb-1.5">
+                                <div className="flex items-center gap-2">
+                                    {task.due_date ? (
+                                        <div className={`flex flex-col leading-none ${isActuallyOverdue ? 'text-red-600' : 'text-gray-900'}`}>
+                                            <span className="text-[10px] font-medium uppercase text-gray-500 mb-0.5">Prazo</span>
+                                            <span className="text-xl font-bold tracking-tight">
+                                                {format(new Date(task.due_date + 'T12:00:00'), "dd 'de' MMM", { locale: ptBR })}
+                                            </span>
+                                            {isActuallyOverdue && (
+                                                <span className="text-[10px] font-bold text-red-600 flex items-center gap-1 mt-0.5">
+                                                    <Calendar className="h-3 w-3" />
+                                                    {daysOverdue}d atrasado
+                                                </span>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span className="text-sm text-gray-400 font-medium">Sem prazo</span>
+                                    )}
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] text-gray-400 block mb-0.5">Criado em</span>
+                                    <span className="text-xs font-medium text-gray-600">
+                                        {format(new Date(task.created_at), "dd/MM/yy", { locale: ptBR })}
                                     </span>
-                                )}
+                                </div>
+                            </div>
+
+                            {/* Priority Badge */}
+                            <div className="mb-1">
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium
+                                    ${task.priority === 'Urgente' ? 'bg-red-100 text-red-700' :
+                                        task.priority === 'Alta' ? 'bg-orange-100 text-orange-700' :
+                                            task.priority === 'Média' ? 'bg-yellow-100 text-yellow-700' :
+                                                'bg-gray-100 text-gray-600'}`}>
+                                    {task.priority || 'Normal'}
+                                </span>
                             </div>
 
                             {/* Title */}
-                            <h3 className={`text-sm font-semibold truncate leading-tight mb-1 ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}>
+                            <h3 className={`text-base font-bold truncate leading-tight mb-1 ${isSelected ? 'text-indigo-700' : 'text-gray-900'}`}>
                                 {task.title}
                             </h3>
 

@@ -5,18 +5,22 @@ import { X, ChevronRight, Check } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createTask } from '@/lib/db/tasks'
 import { getClients } from '@/app/(app)/clients/actions'
-import { getProjects } from '@/lib/db/projects'
+import { getProjects, getProject } from '@/lib/db/projects'
+import { getUsers } from '@/lib/db/profiles'
+import { getTags, createTag } from '@/lib/db/tags'
 
 interface NewTaskModalProps {
     isOpen: boolean
     onClose: () => void
     projectId?: string
     statuses?: any[]
+    users?: any[]
+    currentUser?: any
 }
 
 type Step = 'client' | 'project' | 'details'
 
-export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskModalProps) {
+export function NewTaskModal({ isOpen, onClose, projectId, statuses, users: initialUsers = [], currentUser }: NewTaskModalProps) {
     const [step, setStep] = useState<Step>('client')
     const [loading, setLoading] = useState(false)
     const router = useRouter()
@@ -24,32 +28,64 @@ export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskMo
     // Data
     const [clients, setClients] = useState<any[]>([])
     const [projects, setProjects] = useState<any[]>([])
+    const [users, setUsers] = useState<any[]>(initialUsers)
+    const [availableTags, setAvailableTags] = useState<any[]>([])
 
     // Selection
     const [selectedClient, setSelectedClient] = useState<any>(null)
     const [selectedProject, setSelectedProject] = useState<any>(null)
+    const [selectedAssignees, setSelectedAssignees] = useState<string[]>([])
+    const [selectedTags, setSelectedTags] = useState<string[]>([])
 
     // Form
     const [title, setTitle] = useState('')
     const [description, setDescription] = useState('')
     const [priority, setPriority] = useState('Média')
     const [dueDate, setDueDate] = useState('')
+    const [isRecurring, setIsRecurring] = useState(false)
 
-    // Load clients on open
+    // Load data on open
     useEffect(() => {
         if (isOpen) {
             setLoading(true)
-            getClients().then(data => {
-                setClients(data || [])
-                setLoading(false)
-            })
-            // Reset
-            setStep('client')
-            setSelectedClient(null)
-            setSelectedProject(null)
             setTitle('')
+
+            // Assign users from props if updated or fetch if missing
+            if (initialUsers.length > 0) {
+                setUsers(initialUsers)
+            } else if (users.length === 0) {
+                getUsers().then(data => setUsers(data || []))
+            }
+
+            // Fetch tags
+            getTags().then(data => setAvailableTags(data || []))
+            setSelectedTags([])
+
+            if (projectId) {
+                // Pre-selected project mode
+                getProject(projectId).then(project => {
+                    if (project) {
+                        setSelectedProject(project)
+                        setSelectedClient(project.client)
+                        setStep('details')
+                    } else {
+                        // Fallback if project not found
+                        setStep('client')
+                    }
+                    setLoading(false)
+                })
+            } else {
+                // Normal mode
+                getClients().then(data => {
+                    setClients(data || [])
+                    setLoading(false)
+                })
+                setStep('client')
+                setSelectedClient(null)
+                setSelectedProject(null)
+            }
         }
-    }, [isOpen])
+    }, [isOpen, projectId])
 
     // Load projects when client selected
     const handleSelectClient = async (client: any) => {
@@ -77,7 +113,10 @@ export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskMo
                 description,
                 priority,
                 dueDate: dueDate || null,
-                statusId: selectedProject.project_statuses?.find((s: any) => s.is_default)?.id
+                statusId: selectedProject.project_statuses?.find((s: any) => s.is_default)?.id,
+                assignees: selectedAssignees,
+                isRecurring,
+                tags: selectedTags
             })
 
             router.refresh()
@@ -189,6 +228,87 @@ export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskMo
                                 />
                             </div>
 
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Responsáveis</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {users.map(user => (
+                                        <button
+                                            key={user.id}
+                                            type="button"
+                                            onClick={() => {
+                                                if (selectedAssignees.includes(user.id)) {
+                                                    setSelectedAssignees(selectedAssignees.filter(id => id !== user.id))
+                                                } else {
+                                                    setSelectedAssignees([...selectedAssignees, user.id])
+                                                }
+                                            }}
+                                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border transition-colors ${selectedAssignees.includes(user.id)
+                                                ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            {/* Avatar if available, else initial */}
+                                            {user.avatar_url ? (
+                                                <img src={user.avatar_url} alt="" className="h-4 w-4 rounded-full mr-1.5" />
+                                            ) : (
+                                                <div className="h-4 w-4 rounded-full bg-gray-200 flex items-center justify-center mr-1.5 text-[8px] font-bold text-gray-600">
+                                                    {user.name?.charAt(0)}
+                                                </div>
+                                            )}
+                                            {user.name}
+                                            {selectedAssignees.includes(user.id) && <Check className="ml-1 h-3 w-3" />}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {availableTags.map(tag => (
+                                        <button
+                                            key={tag.id}
+                                            type="button"
+                                            onClick={() => {
+                                                if (selectedTags.includes(tag.id)) {
+                                                    setSelectedTags(selectedTags.filter(id => id !== tag.id))
+                                                } else {
+                                                    setSelectedTags([...selectedTags, tag.id])
+                                                }
+                                            }}
+                                            className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border transition-colors ${selectedTags.includes(tag.id)
+                                                ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            {tag.name}
+                                            {selectedTags.includes(tag.id) && <Check className="ml-1 h-3 w-3" />}
+                                        </button>
+                                    ))}
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Criar nova tag..."
+                                    className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    onKeyDown={async (e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault()
+                                            const name = e.currentTarget.value.trim()
+                                            if (name) {
+                                                try {
+                                                    const newTag = await createTag(name)
+                                                    setAvailableTags([...availableTags, newTag])
+                                                    setSelectedTags([...selectedTags, newTag.id])
+                                                    e.currentTarget.value = ''
+                                                } catch (err) {
+                                                    console.error('Failed to create tag', err)
+                                                }
+                                            }
+                                        }
+                                    }}
+                                />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Prioridade</label>
@@ -214,11 +334,24 @@ export function NewTaskModal({ isOpen, onClose, projectId, statuses }: NewTaskMo
                                 </div>
                             </div>
 
+                            <div className="flex items-center">
+                                <input
+                                    id="is_recurring"
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    checked={isRecurring}
+                                    onChange={(e) => setIsRecurring(e.target.checked)}
+                                />
+                                <label htmlFor="is_recurring" className="ml-2 block text-sm text-gray-900">
+                                    Tarefa Contínua (Recorrente)
+                                </label>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Descrição</label>
                                 <textarea
                                     rows={3}
-                                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 min-h-[80px]"
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     placeholder="Detalhes adicionais..."

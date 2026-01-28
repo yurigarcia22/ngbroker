@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Check } from 'lucide-react'
 import { createProject, createProjectStatus } from '@/lib/db/projects'
 import { useRouter } from 'next/navigation'
 
@@ -10,13 +10,16 @@ interface NewProjectModalProps {
     onClose: () => void
     clientId?: string
     clients?: any[]
+    users?: any[]
+    currentUser?: any
 }
 
-export function NewProjectModal({ isOpen, onClose, clientId: preselectedClientId, clients = [] }: NewProjectModalProps) {
+export function NewProjectModal({ isOpen, onClose, clientId: preselectedClientId, clients = [], users = [], currentUser }: NewProjectModalProps) {
     const [name, setName] = useState('')
     const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || '')
     const [scopeType, setScopeType] = useState('Recorrente')
     const [scopeCustom, setScopeCustom] = useState('')
+    const [selectedMembers, setSelectedMembers] = useState<string[]>([])
     const [loading, setLoading] = useState(false)
     const router = useRouter()
 
@@ -26,7 +29,11 @@ export function NewProjectModal({ isOpen, onClose, clientId: preselectedClientId
         } else if (clients.length > 0 && !selectedClientId) {
             setSelectedClientId(clients[0].id)
         }
-    }, [preselectedClientId, clients, isOpen])
+
+        if (isOpen && currentUser) {
+            setSelectedMembers([currentUser.id])
+        }
+    }, [preselectedClientId, clients, isOpen, currentUser])
 
     if (!isOpen) return null
 
@@ -44,7 +51,8 @@ export function NewProjectModal({ isOpen, onClose, clientId: preselectedClientId
                 clientId: selectedClientId,
                 name,
                 scopeType,
-                scopeCustom: scopeType === 'Outro' ? scopeCustom : undefined
+                scopeCustom: scopeType === 'Outro' ? scopeCustom : undefined,
+                members: selectedMembers
             })
 
             if (result.error) {
@@ -136,6 +144,33 @@ export function NewProjectModal({ isOpen, onClose, clientId: preselectedClientId
                             />
                         </div>
                     )}
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Responsáveis</label>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {users.map(user => (
+                                <button
+                                    key={user.id}
+                                    type="button"
+                                    onClick={() => {
+                                        if (selectedMembers.includes(user.id)) {
+                                            setSelectedMembers(selectedMembers.filter(id => id !== user.id))
+                                        } else {
+                                            setSelectedMembers([...selectedMembers, user.id])
+                                        }
+                                    }}
+                                    className={`inline-flex items-center px-2.5 py-1.5 rounded text-xs font-medium border transition-colors ${selectedMembers.includes(user.id)
+                                        ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    {selectedMembers.includes(user.id) && <Check className="mr-1 h-3 w-3" />}
+                                    {user.name}
+                                </button>
+                            ))}
+                        </div>
+                        {selectedMembers.length === 0 && <p className="text-xs text-red-500">Selecione pelo menos um responsável.</p>}
+                    </div>
 
                     <div className="mt-6 flex justify-end gap-3">
                         <button

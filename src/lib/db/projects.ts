@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 
 export async function getProjects(clientId: string) {
     const supabase = await createClient()
@@ -58,7 +59,7 @@ export async function getProject(projectId: string) {
     return data
 }
 
-export async function createProject(data: { clientId: string; name: string; scopeType: string; scopeCustom?: string }) {
+export async function createProject(data: { clientId: string; name: string; scopeType: string; scopeCustom?: string; members?: string[] }) {
     const supabase = await createClient()
 
     const { data: project, error } = await supabase
@@ -74,6 +75,18 @@ export async function createProject(data: { clientId: string; name: string; scop
 
     if (error) {
         return { error: error.message }
+    }
+
+    if (data.members && data.members.length > 0) {
+        const memberInserts = data.members.map(userId => ({
+            project_id: project.id,
+            user_id: userId
+        }))
+        const { error: membersError } = await supabase.from('project_members').insert(memberInserts)
+        if (membersError) {
+            console.error('Error adding members:', membersError)
+            // We don't block success but log it
+        }
     }
 
     return { data: project }
@@ -190,3 +203,20 @@ export async function getProjectTimesheet(projectId: string) {
 
     return data
 }
+
+export async function deleteProject(id: string) {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/projects')
+    revalidatePath('/dashboard')
+
+    return { success: true }
+}
+

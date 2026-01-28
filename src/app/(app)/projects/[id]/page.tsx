@@ -12,6 +12,8 @@ import { ProjectStatusConfig } from '@/components/projects/project-status-config
 import { TaskList } from '@/components/tasks/task-list'
 import { NewTaskModal } from '@/components/tasks/new-task-modal'
 
+import { getCurrentUser, getUsers } from '@/lib/db/profiles'
+
 export default function ProjectDetailsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; search?: string }> }) {
     const { id } = use(params)
     const { status, search } = use(searchParams)
@@ -19,13 +21,20 @@ export default function ProjectDetailsPage({ params, searchParams }: { params: P
     const [project, setProject] = useState<any>(null)
     const [tasks, setTasks] = useState<any[]>([])
     const [statuses, setStatuses] = useState<any[]>([])
+    const [users, setUsers] = useState<any[]>([])
+    const [currentUser, setCurrentUser] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('tasks')
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
 
     const fetchData = async () => {
         setLoading(true)
-        const projectData = await getProject(id)
+        const [projectData, usersData, currentUserData] = await Promise.all([
+            getProject(id),
+            getUsers(),
+            getCurrentUser()
+        ])
+
         const statusesData = projectData?.project_statuses || []
 
         // Fetch tasks with filters
@@ -34,6 +43,8 @@ export default function ProjectDetailsPage({ params, searchParams }: { params: P
         setProject(projectData)
         setStatuses(statusesData)
         setTasks(tasksData || [])
+        setUsers(usersData || [])
+        setCurrentUser(currentUserData)
         setLoading(false)
     }
 
@@ -121,6 +132,8 @@ export default function ProjectDetailsPage({ params, searchParams }: { params: P
                                 onClose={handleTaskModalClose}
                                 projectId={id}
                                 statuses={statuses}
+                                users={users}
+                                currentUser={currentUser}
                             />
                         </>
                     )}

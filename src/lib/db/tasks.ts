@@ -243,7 +243,8 @@ export async function createTask(data: any) {
             priority: data.priority,
             due_date: data.dueDate,
             status_id: data.statusId,
-            parent_task_id: data.parentTaskId, // For subtasks
+            parent_task_id: data.parentTaskId,
+            is_recurring: data.isRecurring,
         })
         .select()
         .single()
@@ -257,6 +258,15 @@ export async function createTask(data: any) {
             user_id: userId
         }))
         await supabase.from('task_assignees').insert(assignees)
+    }
+
+    // 3. Tags
+    if (data.tags && data.tags.length > 0) {
+        const tags = data.tags.map((tagId: string) => ({
+            task_id: task.id,
+            tag_id: tagId
+        }))
+        await supabase.from('task_tags').insert(tags)
     }
 
     return { data: task }
