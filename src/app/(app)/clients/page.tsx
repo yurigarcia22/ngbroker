@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/ui/page-header'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Users, Search, Plus, Filter, Trash2 } from 'lucide-react'
-import { getClients, deleteClientAction } from './actions'
+import { Users, Search, Plus, Filter, XCircle } from 'lucide-react'
+import { getClients, updateClientStatus } from './actions'
 import { StatusBadge } from '@/components/clients/status-badge'
 import Link from 'next/link'
 import { ClientStats } from '@/components/clients/client-stats'
@@ -42,17 +42,23 @@ export default function ClientsPage() {
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.preventDefault() // Prevent navigation if inside a link (though button is separate)
-        if (!confirm('Tem certeza que deseja excluir este cliente? Toda a informação relacionada a ele será perdida.')) return
+        if (!confirm('Tem certeza que deseja encerrar o contrato deste cliente? Ele será movido para clientes Encerrados.')) return
 
         setDeletingId(id)
-        const result = await deleteClientAction(id)
+        const result = await updateClientStatus(id, 'Encerrado')
         setDeletingId(null)
 
         if (result.success) {
-            // Optimistically remove or refetch
-            setClients(prev => prev.filter(c => c.id !== id))
+            // Optimistically update local state
+            setClients(prev => prev.map(c => c.id === id ? { ...c, status: 'Encerrado' } : c))
+            // If filter is active and not 'Encerrado', remove it from view? 
+            // Or just let it stay until refresh? Better to just re-fetch or filter out if strictly filtering.
+            // If filtering by "Ativo", moving to "Encerrado" should hide it.
+            if (statusFilter && statusFilter !== 'Encerrado') {
+                setClients(prev => prev.filter(c => c.id !== id))
+            }
         } else {
-            alert('Erro ao excluir cliente')
+            alert('Erro ao encerrar cliente')
         }
     }
 
@@ -102,6 +108,7 @@ export default function ClientsPage() {
                     >
                         <option value="">Todos Status</option>
                         <option value="Ativo">Ativo</option>
+                        <option value="Analise">Em Análise</option>
                         <option value="Pausado">Pausado</option>
                         <option value="Inadimplente">Inadimplente</option>
                         <option value="Encerrado">Encerrado</option>
@@ -193,10 +200,10 @@ export default function ClientsPage() {
                                             <button
                                                 onClick={(e) => handleDelete(e, client.id)}
                                                 disabled={deletingId === client.id}
-                                                className="text-red-400 hover:text-red-600 disabled:opacity-50"
-                                                title="Excluir Cliente"
+                                                className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                                                title="Encerrar Contrato (Arquivar)"
                                             >
-                                                <Trash2 className="h-4 w-4" />
+                                                <XCircle className="h-4 w-4" />
                                             </button>
                                         </div>
                                     </td>

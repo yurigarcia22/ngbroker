@@ -5,6 +5,7 @@ const statusStyles = {
     Pausado: 'bg-yellow-100 text-yellow-800',
     Inadimplente: 'bg-red-100 text-red-800',
     Encerrado: 'bg-gray-100 text-gray-800',
+    Analise: 'bg-indigo-100 text-indigo-800',
 } as const
 
 export function StatusBadge({ status }: { status: string }) {

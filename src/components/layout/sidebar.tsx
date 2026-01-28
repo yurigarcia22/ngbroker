@@ -66,11 +66,6 @@ export function Sidebar() {
                                     aria-hidden="true"
                                 />
                                 {item.name}
-                                {item.name === 'Tarefas' && !isActive && (
-                                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white">
-                                        3
-                                    </span>
-                                )}
                             </Link>
                         )
                     })}

@@ -94,6 +94,60 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                 </PageHeader>
             </div>
 
+            {/* Contract Expiration Warning */}
+            {(() => {
+                if (client.status !== 'Ativo' || !client.contract_end) return null
+
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
+                const end = new Date(client.contract_end)
+                // contract_end usually is yyyy-mm-dd, so parsing it in local time or UTC depends on how it's stored.
+                // Given the input type="date", it likely saves yyyy-mm-dd string. 
+                // new Date('yyyy-mm-dd') parses effectively as UTC in some contexts or local in others.
+                // To be safe for "expired", if today > end date.
+                // Let's normalize end date to be end of that day or just compare dates.
+                // Simple comparison:
+                const isExpired = today > end
+
+                if (!isExpired) return null
+
+                return (
+                    <div className="bg-red-50 border-l-4 border-red-500 p-6 mb-6 rounded-r-md shadow-sm">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-red-800 flex items-center">
+                                    <AlertCircle className="w-6 h-6 mr-2" />
+                                    Tempo de contrato do lead acabou!
+                                </h3>
+                                <p className="text-red-700 mt-1">
+                                    O contrato venceu em {end.toLocaleDateString()}. Selecione uma ação abaixo:
+                                </p>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                                <button
+                                    onClick={() => setIsEditModalOpen(true)}
+                                    className="inline-flex justify-center items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                                >
+                                    Renovar Contrato
+                                </button>
+                                <button
+                                    onClick={() => handleStatusChange('Pausado')}
+                                    className="inline-flex justify-center items-center px-4 py-3 border border-transparent text-base font-medium rounded-md text-yellow-800 bg-yellow-100 hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-colors"
+                                >
+                                    Pausar
+                                </button>
+                                <button
+                                    onClick={() => handleStatusChange('Encerrado')}
+                                    className="inline-flex justify-center items-center px-4 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                                >
+                                    Encerrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            })()}
+
             <div className="bg-white shadow rounded-lg mb-6">
                 <div className="border-b border-gray-200">
                     <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">

@@ -10,7 +10,19 @@ export async function getClients(query?: string, status?: string, monthFilter?: 
     let request = supabase
         .from('clients')
         .select('*')
+        .select('*')
         .order('created_at', { ascending: false })
+
+    // Auto-update expired clients to 'Analise'
+    // Logic: If status is 'Ativo' AND contract_end < Today -> Set to 'Analise'
+    const today = new Date().toISOString().split('T')[0]
+
+    // We explicitly ignore the result/error of this maintenance update to not block the read
+    await supabase
+        .from('clients')
+        .update({ status: 'Analise' })
+        .eq('status', 'Ativo')
+        .lt('contract_end', today)
 
     if (query) {
         request = request.ilike('name', `%${query}%`)
