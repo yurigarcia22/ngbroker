@@ -49,7 +49,7 @@ export function KanbanCard({ task, index, onClick }: KanbanCardProps) {
                             {task.assignees?.map((a: any, i: number) => (
                                 <div
                                     key={a.user?.id || i}
-                                    className="inline-block h-5 w-5 rounded-full ring-1 ring-white bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-700"
+                                    className="h-5 w-5 rounded-full ring-1 ring-white bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-700 leading-none"
                                     title={a.user?.name}
                                 >
                                     {a.user?.name?.charAt(0)}
@@ -64,8 +64,8 @@ export function KanbanCard({ task, index, onClick }: KanbanCardProps) {
 
                         {task.due_date && (
                             <div className={`flex items-center text-xs ${new Date(task.due_date + 'T23:59:59') < new Date()
-                                    ? 'text-red-600 font-medium'
-                                    : 'text-gray-500'
+                                ? 'text-red-600 font-medium'
+                                : 'text-gray-500'
                                 }`}>
                                 <Calendar className="h-3 w-3 mr-1" />
                                 {format(new Date(task.due_date + 'T12:00:00'), 'd MMM', { locale: ptBR })}

@@ -24,8 +24,8 @@ export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
         <li
             onClick={onClick}
             className={`
-                group relative bg-white p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 transition-all last:border-0
-                ${isSelected ? 'bg-indigo-50/40' : ''}
+                group relative bg-white p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-sm cursor-pointer transition-all mb-3
+                ${isSelected ? 'ring-2 ring-indigo-500 border-transparent' : ''}
             `}
         >
             <div className="flex items-start gap-3">
@@ -41,12 +41,12 @@ export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
                     <div className="flex items-start justify-between">
                         <div className="min-w-0 flex-1 mr-2">
                             {/* Date Header: Big Due Date + Creation Date */}
-                            <div className="flex items-baseline justify-between mb-1.5">
+                            <div className="flex items-baseline justify-between mb-2">
                                 <div className="flex items-center gap-2">
                                     {task.due_date ? (
                                         <div className={`flex flex-col leading-none ${isActuallyOverdue ? 'text-red-600' : 'text-gray-900'}`}>
                                             <span className="text-[10px] font-medium uppercase text-gray-500 mb-0.5">Prazo</span>
-                                            <span className="text-xl font-bold tracking-tight">
+                                            <span className="text-sm font-bold tracking-tight">
                                                 {format(new Date(task.due_date + 'T12:00:00'), "dd 'de' MMM", { locale: ptBR })}
                                             </span>
                                             {isActuallyOverdue && (

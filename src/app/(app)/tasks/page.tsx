@@ -250,11 +250,11 @@ function TasksContent() {
                     // New Split View
                     <>
                         {/* Left: Task List */}
-                        <div className={`flex-1 overflow-y-auto bg-gray-50 ${selectedTaskId ? 'hidden lg:block lg:w-3/5 xl:w-[55%]' : 'w-full'}`}>
+                        <div className={`flex-1 overflow-y-auto bg-gray-50 p-4 ${selectedTaskId ? 'hidden lg:block lg:w-3/5 xl:w-[55%]' : 'w-full'}`}>
                             {loading ? (
                                 <div className="p-6 text-center text-gray-500">Carregando tarefas...</div>
                             ) : (
-                                <ul className="divide-y divide-gray-100">
+                                <ul className="space-y-3">
                                     {filteredTasks.map((task) => (
                                         <TaskListItem
                                             key={task.id}
