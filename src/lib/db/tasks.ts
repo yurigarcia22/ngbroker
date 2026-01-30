@@ -279,15 +279,26 @@ export async function updateTask(taskId: string, changes: any) {
 }
 
 // Checklist Actions
+// Checklist Actions
 export async function addChecklistItem(taskId: string, title: string) {
     const supabase = await createClient()
-    const { error } = await supabase.from('task_checklist_items').insert({ task_id: taskId, title })
+    const { data, error } = await supabase
+        .from('task_checklist_items')
+        .insert({ task_id: taskId, content: title })
+        .select()
+        .single()
+    return { data, error }
+}
+
+export async function updateChecklistItem(itemId: string, changes: any) {
+    const supabase = await createClient()
+    const { error } = await supabase.from('task_checklist_items').update(changes).eq('id', itemId)
     return { error }
 }
 
-export async function toggleChecklistItem(itemId: string, isDone: boolean) {
+export async function deleteChecklistItem(itemId: string) {
     const supabase = await createClient()
-    const { error } = await supabase.from('task_checklist_items').update({ is_done: isDone }).eq('id', itemId)
+    const { error } = await supabase.from('task_checklist_items').delete().eq('id', itemId)
     return { error }
 }
 

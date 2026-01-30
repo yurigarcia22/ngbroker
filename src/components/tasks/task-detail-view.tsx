@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Send, Paperclip, X, User, Plus, Calendar, Tag, Clock, RefreshCcw } from 'lucide-react'
+import { Send, Paperclip, X, User, Plus, Calendar, Tag, Clock, RefreshCcw, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { createComment, getTaskComments, getTask, getUsers, updateTask, addTimeEntry, updateTaskAssignees } from '@/lib/db/tasks'
+import { createComment, getTaskComments, getTask, getUsers, updateTask, addTimeEntry, updateTaskAssignees, addChecklistItem, deleteChecklistItem, updateChecklistItem } from '@/lib/db/tasks'
 import { getTags, createTag, addTagToTask, removeTagFromTask } from '@/lib/db/tags'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -181,6 +181,63 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         if (onUpdate) onUpdate()
     }
 
+    const handleToggleComplete = async () => {
+        if (!task) return
+        // Try to find a "Done" status
+        const doneStatus = statuses.find(s => ['concluído', 'concluido', 'done', 'finalizado'].includes(s.name.toLowerCase()))
+
+        if (doneStatus) {
+            if (task.status_id === doneStatus.id) {
+                // Already done, maybe Reopen? For now just do nothing or toggle back to first?
+                // Let's just allow setting to Done. If already done, maybe show "Reabrir" logic later.
+            } else {
+                await handleStatusChange(doneStatus.id)
+            }
+        } else {
+            alert('Não foi possível encontrar um status de "Concluído" neste projeto.')
+        }
+    }
+
+    const [checklistItems, setChecklistItems] = useState<any[]>([])
+
+    // Update effect to set checklist items from task data
+    useEffect(() => {
+        if (task?.checklist) {
+            setChecklistItems(task.checklist)
+        }
+    }, [task])
+
+    const handleAddChecklistItem = async (e: any) => {
+        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+            const content = e.currentTarget.value.trim()
+            e.currentTarget.value = ''
+
+            // Optimistic
+            const tempId = 'temp-' + Date.now()
+            const newItem = { id: tempId, content, is_completed: false, task_id: task.id }
+            setChecklistItems([...checklistItems, newItem])
+
+            const { data, error } = await addChecklistItem(task.id, content)
+            if (data) {
+                // Replace temp with real
+                setChecklistItems(prev => prev.map(item => item.id === tempId ? data : item))
+            }
+        }
+    }
+
+    const handleToggleChecklist = async (itemId: string, currentStatus: boolean) => {
+        // Optimistic
+        setChecklistItems(prev => prev.map(item => item.id === itemId ? { ...item, is_completed: !currentStatus } : item))
+
+        await updateChecklistItem(itemId, { is_completed: !currentStatus })
+    }
+
+    const handleDeleteChecklist = async (itemId: string) => {
+        // Optimistic
+        setChecklistItems(prev => prev.filter(item => item.id !== itemId))
+        await deleteChecklistItem(itemId)
+    }
+
     const handleCompleteCycle = async () => {
         if (!task || !task.is_recurring) return
 
@@ -210,6 +267,8 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
     if (!taskId) return <div className="hidden" /> // Should likely not render
     if (!task) return <div className="w-[500px] border-l bg-white p-8">Carregando...</div>
 
+    const isCompleted = task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
+
     return (
         <div className="flex flex-col h-full bg-white border-l border-gray-200 shadow-xl w-[600px] z-30 fixed right-0 top-0 bottom-0 md:relative md:w-full md:z-0 md:right-auto md:top-auto md:shadow-none">
             {/* Header (Top Bar) */}
@@ -225,6 +284,15 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
+                    {!isCompleted && (
+                        <button
+                            onClick={handleToggleComplete}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded text-xs font-bold transition-colors shadow-sm"
+                        >
+                            <Check className="h-3.5 w-3.5" />
+                            Concluir
+                        </button>
+                    )}
                     {task.is_recurring && (
                         <button
                             onClick={handleCompleteCycle}
@@ -270,13 +338,20 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                             Prazo
                         </label>
                         <div className="relative group">
-                            <div className="flex items-center gap-2 text-xs font-medium text-gray-900 bg-gray-50 py-1.5 px-2 rounded border border-transparent hover:border-gray-200 cursor-pointer">
+                            <div className="relative flex items-center gap-2 text-xs font-medium text-gray-900 bg-gray-50 py-1.5 px-2 rounded border border-transparent hover:border-gray-200 cursor-pointer">
                                 <Calendar className="h-3 w-3 text-gray-400" />
                                 <input
                                     type="date"
-                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
                                     value={task.due_date || ''}
                                     onChange={(e) => handleDateChange(e.target.value)}
+                                    onClick={(e) => {
+                                        try {
+                                            e.currentTarget.showPicker()
+                                        } catch (error) {
+                                            // Fallback or ignore
+                                        }
+                                    }}
                                 />
                                 <span className="truncate">{task.due_date ? format(new Date(task.due_date + 'T12:00:00'), 'dd/MM/yy') : 'Definir'}</span>
                             </div>
@@ -393,6 +468,52 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
 
             {/* Scrollable Chat Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-white p-6">
+
+                {/* Checklists (Subtasks) */}
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                            Subtarefas
+                        </label>
+                        {checklistItems.length > 0 && (
+                            <span className="text-[10px] text-gray-400 font-medium">
+                                {Math.round((checklistItems.filter(i => i.is_completed).length / checklistItems.length) * 100)}% concluído
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="space-y-1 mb-3">
+                        {checklistItems.map(item => (
+                            <div key={item.id} className="group flex items-center gap-3 text-sm text-gray-700 py-1.5 px-2 -mx-2 hover:bg-gray-50 rounded-md transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={item.is_completed}
+                                    onChange={() => handleToggleChecklist(item.id, item.is_completed)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                />
+                                <span className={`flex-1 break-words ${item.is_completed ? 'line-through text-gray-400' : ''}`}>
+                                    {item.content}
+                                </span>
+                                <button
+                                    onClick={() => handleDeleteChecklist(item.id)}
+                                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1 transition-all"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="relative">
+                        <input
+                            type="text"
+                            placeholder="+ Adicionar item..."
+                            className="w-full text-sm border-0 border-b border-gray-200 focus:border-indigo-500 focus:ring-0 px-0 py-1.5 bg-transparent placeholder-gray-400 transition-colors"
+                            onKeyDown={handleAddChecklistItem}
+                        />
+                    </div>
+                </div>
+
                 {/* Activity Feed */}
                 <div className="space-y-6">
                     <div className="flex items-center gap-4 text-xs font-semibold text-gray-400 uppercase tracking-wider text-center">
