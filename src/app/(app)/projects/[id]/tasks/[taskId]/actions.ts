@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { addChecklistItem, toggleChecklistItem, createComment, addTimeEntry } from '@/lib/db/tasks'
+import { addChecklistItem, updateChecklistItem, createComment, addTimeEntry } from '@/lib/db/tasks'
 
 export async function addChecklistItemAction(formData: FormData) {
     const taskId = formData.get('taskId') as string
@@ -15,7 +15,7 @@ export async function addChecklistItemAction(formData: FormData) {
 }
 
 export async function toggleChecklistItemAction(itemId: string, isDone: boolean, path: string) {
-    await toggleChecklistItem(itemId, isDone)
+    await updateChecklistItem(itemId, { is_completed: isDone })
     revalidatePath(path)
 }
 
