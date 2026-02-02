@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useMemo } from 'react'
 
 import { PageHeader } from '@/components/ui/page-header'
 import { getAllTasks } from '@/lib/db/tasks'
+import { createClient } from '@/lib/supabase/client'
 import { KanbanBoard } from '@/components/tasks/kanban/kanban-board'
 import { LayoutList, LayoutGrid, Plus, Search, Filter, ArrowUpDown, Calendar, User as UserIcon } from 'lucide-react'
 import { TaskDrawer } from '@/components/tasks/task-drawer'
@@ -46,6 +47,13 @@ function TasksContent() {
         setLoading(false)
     }
 
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+    const supabase = createClient()
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id || null))
+    }, [])
+
     useEffect(() => {
         fetchTasks()
     }, [search])
@@ -63,8 +71,19 @@ function TasksContent() {
     const filteredTasks = useMemo(() => {
         let result = tasks
 
-        // 1. Tab Filtering (Placeholder logic - assuming backend handles 'my' mostly, but good to have)
-        // If we want client side tab filtering, we'd do it here. For now relying on fetch or identity.
+        // 1. Tab Filtering
+        if (activeTab === 'my') {
+            if (currentUserId) {
+                result = result.filter(t => t.assignees?.some((a: any) => a.user.id === currentUserId))
+            }
+        }
+        // Projects and Clients tabs are handled in the rendering logic (grouping), 
+        // but we still rely on 'result' here. No filtering needed for them implies showing ALL tasks 
+        // (that the user has access to) grouped. 
+        // If 'projects' means "all projects", we don't filter. 
+        // If 'clients' means "all clients", we don't filter.
+
+        // 2. Date/Status Filtering
 
         // 2. Date/Status Filtering
         if (activeFilter === 'all') return result
@@ -230,60 +249,116 @@ function TasksContent() {
             {/* Content Area */}
             <div className={`flex-1 overflow-hidden ${viewMode === 'list' ? 'flex' : 'p-6'}`}>
 
-                {viewMode === 'kanban' ? (
-                    <div className="h-full overflow-x-auto w-full">
-                        <KanbanBoard
-                            tasks={filteredTasks}
-                            statuses={derivedStatuses}
-                            onTaskClick={(id) => handleTaskClick(id)}
-                        />
-                        {/* Drawer for Kanban (Overlay) */}
-                        {selectedTaskId && (
-                            <TaskDetailView
-                                taskId={selectedTaskId}
-                                onClose={() => handleTaskClick(selectedTaskId)}
-                                onUpdate={fetchTasks}
-                            />
-                        )}
-                    </div>
-                ) : (
-                    // New Split View
-                    <>
-                        {/* Left: Task List */}
-                        <div className={`flex-1 overflow-y-auto bg-gray-50 p-4 ${selectedTaskId ? 'hidden lg:block lg:w-3/5 xl:w-[55%]' : 'w-full'}`}>
-                            {loading ? (
-                                <div className="p-6 text-center text-gray-500">Carregando tarefas...</div>
-                            ) : (
-                                <ul className="space-y-3">
-                                    {filteredTasks.map((task) => (
-                                        <TaskListItem
-                                            key={task.id}
-                                            task={task}
-                                            isSelected={selectedTaskId === task.id}
-                                            onClick={() => handleTaskClick(task.id)}
-                                        />
-                                    ))}
-                                    {filteredTasks.length === 0 && (
-                                        <div className="p-12 text-center text-gray-400">
-                                            Nenhuma tarefa encontrada.
+                {/* Grouped Rendering Logic */}
+                {(() => {
+                    // Helper to organize tasks
+                    const getGroupedTasks = () => {
+                        if (activeTab === 'projects') {
+                            const groups: Record<string, any[]> = {}
+                            filteredTasks.forEach(t => {
+                                const key = t.project?.name || 'Sem Projeto'
+                                if (!groups[key]) groups[key] = []
+                                groups[key].push(t)
+                            })
+                            return groups
+                        }
+                        if (activeTab === 'clients') {
+                            const groups: Record<string, any[]> = {}
+                            filteredTasks.forEach(t => {
+                                const key = t.project?.client?.name || 'Sem Cliente'
+                                if (!groups[key]) groups[key] = []
+                                groups[key].push(t)
+                            })
+                            return groups
+                        }
+                        return { 'Todas': filteredTasks }
+                    }
+
+                    const grouped = getGroupedTasks()
+                    const groupKeys = Object.keys(grouped).sort() // Alphabetical sort for keys
+
+                    if (viewMode === 'kanban') {
+                        return (
+                            <div className="h-full overflow-x-auto w-full space-y-8">
+                                {groupKeys.map(group => {
+                                    const tasksInGroup = grouped[group]
+                                    if (tasksInGroup.length === 0) return null
+                                    return (
+                                        <div key={group} className="min-w-full">
+                                            {activeTab !== 'my' && activeTab !== 'all' && (
+                                                <h2 className="text-sm font-bold text-gray-700 mb-3 px-2 sticky left-0">{group}</h2>
+                                            )}
+                                            <KanbanBoard
+                                                tasks={tasksInGroup}
+                                                statuses={derivedStatuses}
+                                                onTaskClick={(id) => handleTaskClick(id)}
+                                            />
+                                        </div>
+                                    )
+                                })}
+                                {/* Drawer for Kanban */}
+                                {selectedTaskId && (
+                                    <TaskDetailView
+                                        taskId={selectedTaskId}
+                                        onClose={() => handleTaskClick(selectedTaskId)}
+                                        onUpdate={fetchTasks}
+                                    />
+                                )}
+                            </div>
+                        )
+                    } else {
+                        // List View
+                        return (
+                            <>
+                                <div className={`flex-1 overflow-y-auto bg-gray-50 p-4 ${selectedTaskId ? 'hidden lg:block lg:w-3/5 xl:w-[55%]' : 'w-full'}`}>
+                                    {loading ? (
+                                        <div className="p-6 text-center text-gray-500">Carregando tarefas...</div>
+                                    ) : (
+                                        <div className="space-y-6">
+                                            {groupKeys.map(group => {
+                                                const tasksInGroup = grouped[group]
+                                                if (tasksInGroup.length === 0) return null
+                                                return (
+                                                    <div key={group}>
+                                                        {activeTab !== 'my' && activeTab !== 'all' && (
+                                                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">{group}</h3>
+                                                        )}
+                                                        <ul className="space-y-3">
+                                                            {tasksInGroup.map((task) => (
+                                                                <TaskListItem
+                                                                    key={task.id}
+                                                                    task={task}
+                                                                    isSelected={selectedTaskId === task.id}
+                                                                    onClick={() => handleTaskClick(task.id)}
+                                                                />
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )
+                                            })}
+                                            {filteredTasks.length === 0 && (
+                                                <div className="p-12 text-center text-gray-400">
+                                                    Nenhuma tarefa encontrada.
+                                                </div>
+                                            )}
                                         </div>
                                     )}
-                                </ul>
-                            )}
-                        </div>
+                                </div>
 
-                        {/* Right: Task Detail View */}
-                        {selectedTaskId && (
-                            <div className="w-full lg:w-2/5 xl:w-[45%] flex-none border-l border-gray-200 bg-white h-full overflow-hidden absolute lg:relative inset-0 lg:inset-auto z-10 lg:z-0">
-                                <TaskDetailView
-                                    taskId={selectedTaskId}
-                                    onClose={() => handleTaskClick(selectedTaskId)}
-                                    onUpdate={fetchTasks}
-                                />
-                            </div>
-                        )}
-                    </>
-                )}
+                                {/* Right: Task Detail View */}
+                                {selectedTaskId && (
+                                    <div className="w-full lg:w-2/5 xl:w-[45%] flex-none border-l border-gray-200 bg-white h-full overflow-hidden absolute lg:relative inset-0 lg:inset-auto z-10 lg:z-0">
+                                        <TaskDetailView
+                                            taskId={selectedTaskId}
+                                            onClose={() => handleTaskClick(selectedTaskId)}
+                                            onUpdate={fetchTasks}
+                                        />
+                                    </div>
+                                )}
+                            </>
+                        )
+                    }
+                })()}
             </div>
 
             <NewTaskModal

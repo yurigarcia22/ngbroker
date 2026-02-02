@@ -274,11 +274,23 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
             {/* Header (Top Bar) */}
             <div className="flex-none px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${task.priority === 'Urgente' ? 'bg-red-100 text-red-700' :
-                        task.priority === 'Alta' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                        {task.priority || 'Normal'}
-                    </span>
+                    <select
+                        value={task.priority}
+                        onChange={(e) => {
+                            const newPriority = e.target.value;
+                            updateTask(task.id, { priority: newPriority }); // Direct update
+                            setTask({ ...task, priority: newPriority });
+                            if (onUpdate) onUpdate();
+                        }}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border-0 cursor-pointer focus:ring-1 focus:ring-indigo-500 ${task.priority === 'Urgente' ? 'bg-red-100 text-red-700' :
+                            task.priority === 'Alta' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
+                            }`}
+                    >
+                        <option value="Baixa">Baixa</option>
+                        <option value="Normal">Normal</option>
+                        <option value="Alta">Alta</option>
+                        <option value="Urgente">Urgente</option>
+                    </select>
                     <span className="text-gray-400 text-xs">
                         {task.project?.client?.name} / {task.project?.name}
                     </span>
@@ -310,9 +322,31 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
 
             {/* Fixed Task Info (Title + Compact Metadata) */}
             <div className="flex-none px-6 py-4 bg-white border-b border-gray-100 shadow-sm z-10">
-                <h1 className="text-lg font-bold text-gray-900 mb-4 leading-tight">
-                    {task.title}
-                </h1>
+                <input
+                    type="text"
+                    value={task.title}
+                    onChange={(e) => setTask({ ...task, title: e.target.value })}
+                    onBlur={(e) => {
+                        updateTask(task.id, { title: e.target.value });
+                        if (onUpdate) onUpdate();
+                    }}
+                    className="text-lg font-bold text-gray-900 mb-4 leading-tight w-full border-none p-0 focus:ring-0 placeholder:text-gray-400"
+                    placeholder="Título da Tarefa"
+                />
+
+                {/* Description */}
+                <div className="mb-4">
+                    <textarea
+                        value={task.description || ''}
+                        onChange={(e) => setTask({ ...task, description: e.target.value })}
+                        onBlur={(e) => {
+                            updateTask(task.id, { description: e.target.value });
+                        }}
+                        placeholder="Adicionar descrição..."
+                        rows={2}
+                        className="w-full text-sm text-gray-600 border-transparent hover:border-gray-200 focus:border-indigo-500 rounded px-2 py-1 -ml-2 resize-none bg-transparent focus:bg-white transition-all placeholder:text-gray-400"
+                    />
+                </div>
 
                 {/* Compact Metadata Row */}
                 <div className="grid grid-cols-4 gap-4">
