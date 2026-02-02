@@ -26,7 +26,7 @@ function TasksContent() {
 
     // UI state
     const [activeTab, setActiveTab] = useState<'my' | 'projects' | 'clients' | 'all'>('my')
-    const [activeFilter, setActiveFilter] = useState<'all' | 'today' | 'overdue' | '7days' | 'next-week' | '30days'>('all')
+    const [activeFilter, setActiveFilter] = useState<'all' | 'today' | 'overdue' | 'pending' | 'completed' | 'next-week'>('all')
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false)
     const [search, setSearch] = useState('')
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
@@ -84,47 +84,43 @@ function TasksContent() {
         // If 'clients' means "all clients", we don't filter.
 
         // 2. Date/Status Filtering
-
-        // 2. Date/Status Filtering
         if (activeFilter === 'all') return result
 
         const today = startOfDay(new Date())
 
         return result.filter(task => {
-            if (!task.due_date) return false // Most filters require a due date
-            // Parse specifically as local date YYYY-MM-DD
-            const taskDate = startOfDay(parseISO(task.due_date))
+            const isDone = task.status?.name?.toLowerCase().includes('concluíd')
+                || task.status?.name?.toLowerCase().includes('done')
+                || task.status?.name?.toLowerCase().includes('finalizado')
+                || task.status?.name?.toLowerCase().includes('cancelad')
+
+            // Parse specifically as local date YYYY-MM-DD if exists
+            const taskDate = task.due_date ? startOfDay(parseISO(task.due_date)) : null
 
             switch (activeFilter) {
                 case 'today':
-                    return isToday(taskDate)
+                    return taskDate && isToday(taskDate)
 
                 case 'overdue':
-                    // Check if strictly past today AND not completed
-                    const isDone = task.status?.name?.toLowerCase().includes('concluíd')
-                        || task.status?.name?.toLowerCase().includes('done')
-                        || task.status?.name?.toLowerCase().includes('cancelad')
-                    return isPast(taskDate) && !isToday(taskDate) && !isDone
+                    // Overdue: Date < Today AND Not Done
+                    return taskDate && isPast(taskDate) && !isToday(taskDate) && !isDone
 
-                case '7days':
-                    return isWithinInterval(taskDate, {
-                        start: today,
-                        end: addDays(today, 7)
-                    })
+                case 'pending':
+                    // Pending: Not Done
+                    return !isDone
+
+                case 'completed':
+                    // Completed: Is Done
+                    return isDone
 
                 case 'next-week':
+                    if (!taskDate) return false
                     // Next calendar week (Monday to Sunday)
                     const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 }) // Monday
                     const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 })   // Sunday
                     return isWithinInterval(taskDate, {
                         start: nextWeekStart,
                         end: nextWeekEnd
-                    })
-
-                case '30days':
-                    return isWithinInterval(taskDate, {
-                        start: today,
-                        end: addDays(today, 30)
                     })
 
                 default:
@@ -199,10 +195,10 @@ function TasksContent() {
                                 {[
                                     { id: 'all', label: 'Todos' },
                                     { id: 'today', label: 'Hoje' },
+                                    { id: 'pending', label: 'Pendentes' },
                                     { id: 'overdue', label: 'Atrasadas' },
-                                    { id: '7days', label: '7 dias' },
+                                    { id: 'completed', label: 'Concluídas' },
                                     { id: 'next-week', label: 'Próxima Semana' },
-                                    { id: '30days', label: 'Próximos 30 dias' },
                                 ].map(f => (
                                     <button
                                         key={f.id}
