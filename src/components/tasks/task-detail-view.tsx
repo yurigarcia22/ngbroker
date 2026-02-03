@@ -11,7 +11,7 @@ import { ptBR } from 'date-fns/locale'
 interface TaskDetailViewProps {
     taskId: string | null
     onClose: () => void
-    onUpdate?: () => void // Callback when task changes
+    onUpdate?: (updatedTask?: any) => void // Callback when task changes
 }
 
 export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProps) {
@@ -70,8 +70,10 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                 getTaskComments(taskId).then(setComments)
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `id=eq.${taskId}` }, () => {
-                getTask(taskId).then(setTask)
-                if (onUpdate) onUpdate()
+                getTask(taskId).then(t => {
+                    setTask(t)
+                    if (onUpdate) onUpdate(t)
+                })
             })
             .subscribe()
 
@@ -104,12 +106,15 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         await updateTask(task.id, { status_id: newStatusId })
         // Optimistic update or wait for realtime? Realtime handles it but optimistic is snappier.
         const s = statuses.find(s => s.id === newStatusId)
-        setTask({ ...task, status: s, status_id: newStatusId })
+        const validStatus = statuses.find(s => s.id === newStatusId)
+        const updatedTask = { ...task, status: validStatus, status_id: newStatusId }
+        setTask(updatedTask)
 
         // System comment for status change? User requested "line for status change inside chat".
         // Use a special system comment or just normal comment?
         // Let's Insert a system comment manually to be safe
-        await createComment(task.id, `mudou o status para **${s?.name}**`)
+        await createComment(task.id, `mudou o status para **${validStatus?.name}**`)
+        if (onUpdate) onUpdate(updatedTask)
     }
 
     const handleAddTag = async (tagId: string) => {
@@ -121,7 +126,7 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         // Refetch task to get updated tags relational data structure (complex to mock locally)
         const t = await getTask(task.id)
         setTask(t)
-        if (onUpdate) onUpdate()
+        if (onUpdate) onUpdate(t)
     }
 
     const handleRemoveTag = async (tagId: string) => {
@@ -129,7 +134,7 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         await removeTagFromTask(task.id, tagId)
         const t = await getTask(task.id)
         setTask(t)
-        if (onUpdate) onUpdate()
+        if (onUpdate) onUpdate(t)
     }
 
     const handleCreateTag = async (name: string) => {
@@ -154,7 +159,7 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         await updateTaskAssignees(task.id, newIds)
         const t = await getTask(task.id)
         setTask(t)
-        if (onUpdate) onUpdate()
+        if (onUpdate) onUpdate(t)
     }
 
     const handleRemoveAssignee = async (userId: string) => {
@@ -169,7 +174,7 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         await updateTaskAssignees(task.id, newIds)
         const t = await getTask(task.id)
         setTask(t)
-        if (onUpdate) onUpdate()
+        if (onUpdate) onUpdate(t)
     }
 
     const handleDateChange = async (date: string) => {
@@ -178,7 +183,8 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         setTask({ ...task, due_date: date })
         // Create system comment
         await createComment(task.id, `alterou o prazo para **${format(new Date(date + 'T12:00:00'), 'dd/MM/yy')}**`)
-        if (onUpdate) onUpdate()
+        const updatedTask = { ...task, due_date: date }
+        if (onUpdate) onUpdate(updatedTask)
     }
 
     const handleToggleComplete = async () => {
@@ -260,8 +266,9 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         await updateTask(task.id, { due_date: newDateStr })
 
         // 3. Update local state
-        setTask({ ...task, due_date: newDateStr })
-        if (onUpdate) onUpdate()
+        const updatedTask = { ...task, due_date: newDateStr }
+        setTask(updatedTask)
+        if (onUpdate) onUpdate(updatedTask)
     }
 
     if (!taskId) return <div className="hidden" /> // Should likely not render
@@ -279,8 +286,9 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                         onChange={(e) => {
                             const newPriority = e.target.value;
                             updateTask(task.id, { priority: newPriority }); // Direct update
-                            setTask({ ...task, priority: newPriority });
-                            if (onUpdate) onUpdate();
+                            const updatedTask = { ...task, priority: newPriority };
+                            setTask(updatedTask);
+                            if (onUpdate) onUpdate(updatedTask);
                         }}
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border-0 cursor-pointer focus:ring-1 focus:ring-indigo-500 ${task.priority === 'Urgente' ? 'bg-red-100 text-red-700' :
                             task.priority === 'Alta' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
@@ -328,7 +336,9 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                     onChange={(e) => setTask({ ...task, title: e.target.value })}
                     onBlur={(e) => {
                         updateTask(task.id, { title: e.target.value });
-                        if (onUpdate) onUpdate();
+                        const updatedTask = { ...task, title: e.target.value };
+                        setTask(updatedTask);
+                        if (onUpdate) onUpdate(updatedTask);
                     }}
                     className="text-lg font-bold text-gray-900 mb-4 leading-tight w-full border-none p-0 focus:ring-0 placeholder:text-gray-400"
                     placeholder="Título da Tarefa"

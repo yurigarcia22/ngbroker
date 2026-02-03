@@ -23,7 +23,8 @@ export async function getAllTasks(filters: {
             project:projects!inner (
                 id, 
                 name, 
-                client:clients!inner (id, name)
+                client:clients!inner (id, name),
+                statuses:project_statuses(id, name, sort_order)
             ),
             status:project_statuses (id, name, sort_order, is_default),
             assignees:task_assignees (
@@ -112,7 +113,8 @@ export async function getAllTasks(filters: {
         project:projects!inner (
             id, 
             name, 
-            client:clients!inner (id, name)
+            client:clients!inner (id, name),
+            statuses:project_statuses(id, name, sort_order)
         ),
         status:project_statuses (id, name, sort_order, is_default),
         time_entries (minutes),

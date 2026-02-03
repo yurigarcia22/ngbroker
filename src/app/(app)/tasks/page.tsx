@@ -68,11 +68,21 @@ function TasksContent() {
         router.replace(`${pathname}?${params.toString()}`)
     }
 
+    const handleTaskUpdate = (updatedTask?: any) => {
+        if (!updatedTask) {
+            fetchTasks()
+            return
+        }
+        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t))
+    }
+
     const handleToggleStatus = async (task: any) => {
-        // Find "Concluída" status or reverse
-        // Assuming derivedStatuses contains all statuses
-        const doneStatus = derivedStatuses.find(s => s.name?.toLowerCase().includes('concluíd') || s.name?.toLowerCase().includes('done'))
-        const pendingStatus = derivedStatuses.find(s => s.name?.toLowerCase().includes('fazer') || s.name?.toLowerCase().includes('todo') || s.name?.toLowerCase().includes('pendente'))
+        // Find "Concluída" status from the project's specific statuses if available, 
+        // fallback to derived if not (backward compatibility)
+        const projectStatuses = task.project?.statuses || derivedStatuses
+
+        const doneStatus = projectStatuses.find((s: any) => s.name?.toLowerCase().includes('concluíd') || s.name?.toLowerCase().includes('done'))
+        const pendingStatus = projectStatuses.find((s: any) => s.name?.toLowerCase().includes('fazer') || s.name?.toLowerCase().includes('todo') || s.name?.toLowerCase().includes('pendente'))
 
         // If currently done, move to pending. Else move to done.
         const isCurrentlyDone = task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
@@ -81,9 +91,20 @@ function TasksContent() {
 
         if (newStatus) {
             // Optimistic update
-            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus, status_id: newStatus.id } : t))
+            const updatedTask = { ...task, status: newStatus, status_id: newStatus.id }
+            setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t))
             await updateTask(task.id, { status_id: newStatus.id })
-            fetchTasks() // Sync
+
+            // Only refetch if we are in a mode where checking/unchecking removes the item (like "Pending" filter)
+            // But user complains "tive que atualizar a page". 
+            // If we are in "Pending" filter and we complete it, it SHOULD execute removal.
+            // But if we use optimistic update, it might disappear instantly?
+            // Actually, if we update local state, `filteredTasks` useMemo will run and filter it out.
+            // That is desired behavior usually. 
+            // But if we want it to "stay" for a moment or just update, local update is fine.
+            // We just need to ensure `fetchTasks` doesn't overwrite it with old data if race condition.
+            // But here we await updateTask.
+            // fetchTasks() // Sync - Removing full sync to rely on local update effectively.
         }
     }
 
@@ -321,7 +342,7 @@ function TasksContent() {
                                     <TaskDetailView
                                         taskId={selectedTaskId}
                                         onClose={() => handleTaskClick(selectedTaskId)}
-                                        onUpdate={fetchTasks}
+                                        onUpdate={handleTaskUpdate}
                                     />
                                 )}
                             </div>
@@ -372,7 +393,7 @@ function TasksContent() {
                                         <TaskDetailView
                                             taskId={selectedTaskId}
                                             onClose={() => handleTaskClick(selectedTaskId)}
-                                            onUpdate={fetchTasks}
+                                            onUpdate={handleTaskUpdate}
                                         />
                                     </div>
                                 )}
