@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense, useMemo } from 'react'
 
 import { PageHeader } from '@/components/ui/page-header'
-import { getAllTasks } from '@/lib/db/tasks'
+import { getAllTasks, updateTask } from '@/lib/db/tasks'
 import { createClient } from '@/lib/supabase/client'
 import { KanbanBoard } from '@/components/tasks/kanban/kanban-board'
 import { LayoutList, LayoutGrid, Plus, Search, Filter, ArrowUpDown, Calendar, User as UserIcon } from 'lucide-react'
@@ -26,7 +26,7 @@ function TasksContent() {
 
     // UI state
     const [activeTab, setActiveTab] = useState<'my' | 'projects' | 'clients' | 'all'>('my')
-    const [activeFilter, setActiveFilter] = useState<'all' | 'today' | 'overdue' | 'pending' | 'completed' | 'next-week'>('all')
+    const [activeFilter, setActiveFilter] = useState<'today' | 'pending' | 'overdue' | 'completed' | 'next-week' | 'all'>('today')
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false)
     const [search, setSearch] = useState('')
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
@@ -68,6 +68,25 @@ function TasksContent() {
         router.replace(`${pathname}?${params.toString()}`)
     }
 
+    const handleToggleStatus = async (task: any) => {
+        // Find "Concluída" status or reverse
+        // Assuming derivedStatuses contains all statuses
+        const doneStatus = derivedStatuses.find(s => s.name?.toLowerCase().includes('concluíd') || s.name?.toLowerCase().includes('done'))
+        const pendingStatus = derivedStatuses.find(s => s.name?.toLowerCase().includes('fazer') || s.name?.toLowerCase().includes('todo') || s.name?.toLowerCase().includes('pendente'))
+
+        // If currently done, move to pending. Else move to done.
+        const isCurrentlyDone = task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
+
+        const newStatus = isCurrentlyDone ? pendingStatus : doneStatus
+
+        if (newStatus) {
+            // Optimistic update
+            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus, status_id: newStatus.id } : t))
+            await updateTask(task.id, { status_id: newStatus.id })
+            fetchTasks() // Sync
+        }
+    }
+
     const filteredTasks = useMemo(() => {
         let result = tasks
 
@@ -99,7 +118,7 @@ function TasksContent() {
 
             switch (activeFilter) {
                 case 'today':
-                    return taskDate && isToday(taskDate)
+                    return taskDate && isToday(taskDate) && !isDone
 
                 case 'overdue':
                     // Overdue: Date < Today AND Not Done
@@ -121,10 +140,14 @@ function TasksContent() {
                     return isWithinInterval(taskDate, {
                         start: nextWeekStart,
                         end: nextWeekEnd
-                    })
+                    }) && !isDone
 
+                case 'all':
                 default:
-                    return true
+                    // User requested "All" to NOT show completed tasks? 
+                    // "As tarefas concluidas devem parar de aparecer nos filtros de todos... deve aparecer somente concluidas"
+                    // So "All" means "All Pending".
+                    return !isDone
             }
         })
     }, [tasks, activeFilter])
@@ -193,12 +216,12 @@ function TasksContent() {
 
                             <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar max-w-[600px]">
                                 {[
-                                    { id: 'all', label: 'Todos' },
                                     { id: 'today', label: 'Hoje' },
                                     { id: 'pending', label: 'Pendentes' },
                                     { id: 'overdue', label: 'Atrasadas' },
                                     { id: 'completed', label: 'Concluídas' },
                                     { id: 'next-week', label: 'Próxima Semana' },
+                                    { id: 'all', label: 'Todos' },
                                 ].map(f => (
                                     <button
                                         key={f.id}
@@ -288,6 +311,7 @@ function TasksContent() {
                                                 tasks={tasksInGroup}
                                                 statuses={derivedStatuses}
                                                 onTaskClick={(id) => handleTaskClick(id)}
+                                                onUpdate={fetchTasks}
                                             />
                                         </div>
                                     )
@@ -326,6 +350,7 @@ function TasksContent() {
                                                                     task={task}
                                                                     isSelected={selectedTaskId === task.id}
                                                                     onClick={() => handleTaskClick(task.id)}
+                                                                    onToggleStatus={handleToggleStatus}
                                                                 />
                                                             ))}
                                                         </ul>

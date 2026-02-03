@@ -1,16 +1,18 @@
 import { formatDistanceToNow, format, differenceInCalendarDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Calendar } from 'lucide-react'
+import { Calendar, CheckSquare } from 'lucide-react'
 
 interface TaskListItemProps {
     task: any
     isSelected: boolean
     onClick: () => void
+    onToggleStatus?: (task: any) => void
 }
 
 export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
     const daysOverdue = task.due_date ? differenceInCalendarDays(new Date(), new Date(task.due_date + 'T12:00:00')) : 0
     const isActuallyOverdue = daysOverdue > 0
+    const isCompleted = task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
 
     // Status Colors
     const getStatusColor = (name: string) => {
@@ -32,9 +34,25 @@ export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
                 {/* Checkbox */}
                 <div
                     className="mt-1 flex-shrink-0 cursor-pointer text-gray-300 hover:text-indigo-600 transition-colors"
-                    onClick={(e) => { e.stopPropagation(); /* Implement toggle status logic here later */ }}
+                    onClick={async (e) => {
+                        e.stopPropagation()
+                        // Find 'Concluída' or 'Done' status
+                        // Ideally we pass available statuses or just send 'Done' name if the backend handles it by name?
+                        // Or we optimistically assume we just want to toggle is_completed if we had such flag.
+                        // Since we use status_id, we might need to know the ID for "Concluída".
+                        // Use a prop `onToggleStatus`? Or just let parent handle it?
+                        // Better: call `onToggleStatus` prop.
+                        if (onToggleStatus) onToggleStatus(task)
+                    }}
                 >
-                    <div className="h-5 w-5 rounded-md border-2 border-gray-300 hover:border-indigo-600 transition-colors" />
+                    <div className={`h-5 w-5 rounded-md border-2 transition-colors flex items-center justify-center ${task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : 'border-gray-300 hover:border-indigo-600'
+                        }`}>
+                        {(task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')) && (
+                            <CheckSquare className="h-3 w-3" />
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -44,15 +62,21 @@ export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
                             <div className="flex items-baseline justify-between mb-2">
                                 <div className="flex items-center gap-2">
                                     {task.due_date ? (
-                                        <div className={`flex flex-col leading-none ${isActuallyOverdue ? 'text-red-600' : 'text-gray-900'}`}>
+                                        <div className={`flex flex-col leading-none ${isActuallyOverdue && !isCompleted ? 'text-red-600' : isCompleted ? 'text-green-600' : 'text-gray-900'}`}>
                                             <span className="text-[10px] font-medium uppercase text-gray-500 mb-0.5">Prazo</span>
                                             <span className="text-sm font-bold tracking-tight">
                                                 {format(new Date(task.due_date + 'T12:00:00'), "dd 'de' MMM", { locale: ptBR })}
                                             </span>
-                                            {isActuallyOverdue && (
+                                            {!isCompleted && isActuallyOverdue && (
                                                 <span className="text-[10px] font-bold text-red-600 flex items-center gap-1 mt-0.5">
                                                     <Calendar className="h-3 w-3" />
                                                     {daysOverdue}d atrasado
+                                                </span>
+                                            )}
+                                            {isCompleted && (
+                                                <span className="text-[10px] font-bold text-green-600 flex items-center gap-1 mt-0.5">
+                                                    <CheckSquare className="h-3 w-3" />
+                                                    Concluído em {format(new Date(task.updated_at), "dd/MM", { locale: ptBR })}
                                                 </span>
                                             )}
                                         </div>

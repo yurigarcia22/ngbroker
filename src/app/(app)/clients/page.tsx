@@ -15,7 +15,8 @@ export default function ClientsPage() {
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState('')
-    const [monthFilter, setMonthFilter] = useState('') // Format "YYYY-MM"
+    // Default to current month
+    const [monthFilter, setMonthFilter] = useState(() => new Date().toISOString().slice(0, 7))
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [deletingId, setDeletingId] = useState<string | null>(null)
 

@@ -10,9 +10,10 @@ interface KanbanBoardProps {
     tasks: any[]
     statuses: any[]
     onTaskClick: (taskId: string) => void
+    onUpdate?: () => void
 }
 
-export function KanbanBoard({ tasks, statuses, onTaskClick }: KanbanBoardProps) {
+export function KanbanBoard({ tasks, statuses, onTaskClick, onUpdate }: KanbanBoardProps) {
     const [boardData, setBoardData] = useState<Record<string, any[]>>({})
     const [isMounted, setIsMounted] = useState(false)
     const router = useRouter()
@@ -81,6 +82,7 @@ export function KanbanBoard({ tasks, statuses, onTaskClick }: KanbanBoardProps) 
             try {
                 await updateTask(draggableId, { status_id: finishStatusId })
                 router.refresh()
+                if (onUpdate) onUpdate()
             } catch (error) {
                 console.error('Failed to update task status', error)
             }

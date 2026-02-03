@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { NotificationsBell } from '@/components/layout/notifications-bell'
 import { UserSettingsModal } from '@/components/layout/user-settings-modal'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -25,10 +25,34 @@ export function Sidebar() {
     const router = useRouter()
     const supabase = createClient()
 
+    const [user, setUser] = useState<{ name: string } | null>(null)
+
+    useEffect(() => {
+        async function loadUser() {
+            const { data: { user: authUser } } = await supabase.auth.getUser()
+            if (authUser) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('name')
+                    .eq('id', authUser.id)
+                    .single()
+
+                if (profile) {
+                    setUser(profile)
+                }
+            }
+        }
+        loadUser()
+    }, [])
+
     const handleSignOut = async () => {
         await supabase.auth.signOut()
+        router.push('/login')
         router.refresh()
     }
+
+    const userName = user?.name || 'Usuário'
+    const userInitial = userName.charAt(0).toUpperCase()
 
     return (
         <div className="flex h-full w-64 flex-col bg-[#1A1F2C] text-sm font-medium">
@@ -83,15 +107,20 @@ export function Sidebar() {
                     </button>
 
                     <div className="mt-4 pt-4 border-t border-white/10">
-                        <div className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
-                            <div className="h-9 w-9 rounded-full bg-[#0EA5E9]/20 border border-[#0EA5E9]/30 flex items-center justify-center text-[#0EA5E9] font-bold text-sm">
-                                CS
+                        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors group">
+                            <div className="h-9 w-9 rounded-full bg-[#0EA5E9] flex items-center justify-center text-white font-bold text-sm shadow-md">
+                                {userInitial}
                             </div>
                             <div className="flex flex-1 flex-col min-w-0">
-                                <span className="text-white font-medium truncate group-hover:text-[#0EA5E9] transition-colors">Carlos Silva</span>
-                                <span className="text-xs text-gray-500 truncate">admin@ngbroker.com</span>
+                                <span className="text-white font-medium truncate">{userName}</span>
                             </div>
-                            <NotificationsBell /> {/* Adjust bell style via props or global later if needed */}
+                            <button
+                                onClick={handleSignOut}
+                                className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                                title="Sair"
+                            >
+                                <LogOut className="h-4 w-4" />
+                            </button>
                         </div>
                     </div>
                 </div>

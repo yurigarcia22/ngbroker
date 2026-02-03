@@ -62,7 +62,9 @@ export async function getClients(query?: string, status?: string, monthFilter?: 
         // Started before or during M (start < M+1)
         // Ended after or during M (end >= M) OR End is NULL
 
-        request = request.lt('contract_start', startOfNextMonth)
+        // request = request.lt('contract_start', startOfNextMonth)
+        // includes null start dates as well
+        request = request.or(`contract_start.lt.${startOfNextMonth},contract_start.is.null`)
         request = request.or(`contract_end.gte.${startOfMonth},contract_end.is.null`)
     }
 
