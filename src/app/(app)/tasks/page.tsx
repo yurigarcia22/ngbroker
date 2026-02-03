@@ -103,7 +103,7 @@ function TasksContent() {
         // If 'clients' means "all clients", we don't filter.
 
         // 2. Date/Status Filtering
-        if (activeFilter === 'all') return result
+
 
         const today = startOfDay(new Date())
 
