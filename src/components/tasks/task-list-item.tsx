@@ -9,7 +9,7 @@ interface TaskListItemProps {
     onToggleStatus?: (task: any) => void
 }
 
-export function TaskListItem({ task, isSelected, onClick }: TaskListItemProps) {
+export function TaskListItem({ task, isSelected, onClick, onToggleStatus }: TaskListItemProps) {
     const daysOverdue = task.due_date ? differenceInCalendarDays(new Date(), new Date(task.due_date + 'T12:00:00')) : 0
     const isActuallyOverdue = daysOverdue > 0
     const isCompleted = task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
