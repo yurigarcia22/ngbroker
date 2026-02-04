@@ -13,13 +13,20 @@ export async function getAllTasks(filters: {
     datePreset?: string; // 'today', 'overdue', 'next7', 'month', 'range'
     startDate?: string;
     endDate?: string;
+    page?: number;
+    limit?: number;
 }) {
     const supabase = await createClient()
 
-    let query = supabase
+    const page = filters.page || 1
+    const limit = filters.limit || 50
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    let query: any = supabase
         .from('tasks')
         .select(`
-            *,
+            id, project_id, title, priority, due_date, status_id, updated_at, created_at,
             project:projects!inner (
                 id, 
                 name, 
@@ -30,13 +37,13 @@ export async function getAllTasks(filters: {
             assignees:task_assignees (
                 user:profiles (id, name)
             ),
-            time_entries (minutes),
             tags:task_tags (
                 tag:tags (id, name, color)
             )
         `)
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
+        .range(from, to)
 
     // 1. Project & Client Filters
     if (filters.projectId) {
@@ -109,7 +116,7 @@ export async function getAllTasks(filters: {
     // RE-STRATEGY for Assignee Filter:
     // We will build the select clause dynamically.
     let selectString = `
-        *,
+        id, project_id, title, priority, due_date, status_id, updated_at, created_at,
         project:projects!inner (
             id, 
             name, 
@@ -117,7 +124,6 @@ export async function getAllTasks(filters: {
             statuses:project_statuses(id, name, sort_order)
         ),
         status:project_statuses (id, name, sort_order, is_default),
-        time_entries (minutes),
         tags:task_tags (
             tag:tags (id, name, color)
         )
@@ -135,6 +141,7 @@ export async function getAllTasks(filters: {
     query = supabase.from('tasks').select(selectString)
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
+        .range(from, to)
 
     // ... Re-apply filters ...
     if (filters.projectId) query = query.eq('project_id', filters.projectId)
@@ -173,10 +180,7 @@ export async function getAllTasks(filters: {
         return []
     }
 
-    return data.map((task: any) => ({
-        ...task,
-        total_minutes: task.time_entries?.reduce((acc: number, curr: any) => acc + curr.minutes, 0) || 0
-    }))
+    return data
 }
 
 export async function getTasks(projectId: string, filters?: { status?: string; assignee?: string; priority?: string; search?: string }) {
@@ -199,22 +203,9 @@ export async function getTask(taskId: string) {
       assignees:task_assignees (
         user:profiles (id, name)
       ),
-      checklist:task_checklist_items (*),
-      comments:task_comments (
-        *,
-        user:profiles (id, name)
-      ),
-      attachments:task_attachments (
-        *,
-        user:profiles (id, name)
-      ),
-        time_entries (
-          *,
-          user:profiles (id, name)
-        ),
-        tags:task_tags (
-          tag:tags (id, name, color)
-        )
+      tags:task_tags (
+        tag:tags (id, name, color)
+      )
       `)
         .eq('id', taskId)
         // Order relations

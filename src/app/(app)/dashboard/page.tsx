@@ -7,6 +7,7 @@ import { ActiveProjectsWidget } from '@/components/dashboard/active-projects-wid
 import { createClient } from '@/lib/supabase/server'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,7 +71,11 @@ async function DashboardContent() {
 
 export default function DashboardPage() {
     return (
-        <Suspense fallback={<div className="p-8">Carregando dashboard...</div>}>
+        <Suspense fallback={
+            <div className="flex justify-center p-12">
+                <LoadingSpinner size="lg" />
+            </div>
+        }>
             <DashboardContent />
         </Suspense>
     )

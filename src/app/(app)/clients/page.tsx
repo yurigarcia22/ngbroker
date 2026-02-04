@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/ui/page-header'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Users, Search, Plus, Filter, XCircle } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { getClients, updateClientStatus } from './actions'
 import { StatusBadge } from '@/components/clients/status-badge'
 import Link from 'next/link'
@@ -119,8 +120,8 @@ export default function ClientsPage() {
 
             {loading ? (
                 <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                        <div key={i} className="h-16 animate-pulse rounded-md bg-gray-200" />
+                    {[1, 2, 3, 4, 5].map((i) => (
+                        <Skeleton key={i} className="h-16 w-full" />
                     ))}
                 </div>
             ) : clients.length === 0 ? (

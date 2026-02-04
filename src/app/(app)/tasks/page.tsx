@@ -13,7 +13,19 @@ import { TaskDetailView } from '@/components/tasks/task-detail-view'
 import { TaskListItem } from '@/components/tasks/task-list-item'
 import { format, startOfDay, isToday, isPast, addDays, isWithinInterval, startOfWeek, endOfWeek, addWeeks, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import useSWR from 'swr'
+
+// Fetcher for SWR
+const fetcher = async (key: string) => {
+    // We decode the key to get params
+    // key format: '/api/tasks?params...' or custom object
+    // Since we use server actions, we can wrapper it.
+    // But SWR keys can be arrays: ['tasks', filters]
+    const [_, filters] = JSON.parse(key)
+    return await getAllTasks(filters)
+}
 
 function TasksContent() {
     const searchParams = useSearchParams()
@@ -30,21 +42,16 @@ function TasksContent() {
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false)
     const [search, setSearch] = useState('')
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
+    const [page, setPage] = useState(1)
+    const ITEMS_PER_PAGE = 30
 
     // Selection (Mapped to URL)
     const selectedTaskId = searchParams.get('taskId')
 
+    // We use SWR now, so this manual fetch is deprecated for initial load, 
+    // but useful for manual refresh if needed (though mutate is better).
     const fetchTasks = async () => {
-        setLoading(true)
-        // Ensure we pass real filters based on activeTab
-        // Assuming current user ID logic handles "my" in backend default if no filters, 
-        // or we need to pass current user ID. For MVP we fetch all and filter in backend or frontend?
-        // getAllTasks handles many filters.
-        const data = await getAllTasks({
-            search: search || undefined
-        })
-        setTasks(data || [])
-        setLoading(false)
+        mutate()
     }
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -54,9 +61,39 @@ function TasksContent() {
         supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id || null))
     }, [])
 
+    // SWR Integration
+    const { data: tasksData, error, mutate, isLoading: swrLoading } = useSWR(
+        // Only fetch if we have user ID (if 'my' tab) or other tabs.
+        // If 'my' tab and no user ID yet, return null key to pause.
+        (activeTab === 'my' && !currentUserId) ? null : JSON.stringify(['tasks', {
+            search: search || undefined,
+            projectId: activeTab === 'projects' ? undefined : undefined, // Grouping logic handles filtering usually? No, grouping fetches all.
+            // If activeTab is 'my', we filter by assignee.
+            assigneeId: activeTab === 'my' && currentUserId ? [currentUserId] : undefined,
+            page,
+            limit: ITEMS_PER_PAGE
+        }]),
+        async (key) => {
+            const [_, params] = JSON.parse(key)
+            return await getAllTasks(params)
+        },
+        {
+            revalidateOnFocus: false, // Don't aggressive revalidate
+            dedupingInterval: 60000, // Cache for 1 min
+        }
+    )
+
     useEffect(() => {
-        fetchTasks()
-    }, [search])
+        if (tasksData) {
+            setTasks(tasksData)
+            setLoading(false)
+        }
+    }, [tasksData])
+
+    // Sync loading state 
+    useEffect(() => {
+        setLoading(swrLoading)
+    }, [swrLoading])
 
     const handleTaskClick = (id: string) => {
         const params = new URLSearchParams(searchParams)
@@ -113,6 +150,8 @@ function TasksContent() {
 
         // 1. Tab Filtering
         if (activeTab === 'my') {
+            // Server filtered, but ensure consistency if cache is stale or optimistically updated
+            // No strict need to filter again if we trust server, but harmless to keep for safety
             if (currentUserId) {
                 result = result.filter(t => t.assignees?.some((a: any) => a.user.id === currentUserId))
             }
@@ -353,7 +392,9 @@ function TasksContent() {
                             <>
                                 <div className={`flex-1 overflow-y-auto bg-gray-50 p-4 ${selectedTaskId ? 'hidden lg:block lg:w-3/5 xl:w-[55%]' : 'w-full'}`}>
                                     {loading ? (
-                                        <div className="p-6 text-center text-gray-500">Carregando tarefas...</div>
+                                        <div className="flex justify-center p-12">
+                                            <LoadingSpinner size="lg" />
+                                        </div>
                                     ) : (
                                         <div className="space-y-6">
                                             {groupKeys.map(group => {
@@ -385,6 +426,24 @@ function TasksContent() {
                                             )}
                                         </div>
                                     )}
+                                    {/* Pagination Controls */}
+                                    <div className="mt-4 flex justify-between items-center bg-white p-3 rounded-lg border border-gray-200 shadow-sm sticky bottom-0">
+                                        <button
+                                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                                            disabled={page === 1}
+                                            className="px-3 py-1 text-sm border rounded disabled:opacity-50"
+                                        >
+                                            Anterior
+                                        </button>
+                                        <span className="text-sm text-gray-500">Página {page}</span>
+                                        <button
+                                            onClick={() => setPage(p => p + 1)}
+                                            disabled={tasksData && tasksData.length < ITEMS_PER_PAGE} // Simple logic, assumes if < limit we are at end
+                                            className="px-3 py-1 text-sm border rounded disabled:opacity-50"
+                                        >
+                                            Próximo
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Right: Task Detail View */}

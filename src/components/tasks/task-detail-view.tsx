@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Send, Paperclip, X, User, Plus, Calendar, Tag, Clock, RefreshCcw, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { createComment, getTaskComments, getTask, getUsers, updateTask, addTimeEntry, updateTaskAssignees, addChecklistItem, deleteChecklistItem, updateChecklistItem } from '@/lib/db/tasks'
+import { getTaskChecklist, getTaskAttachments, getTaskTimeEntries } from '@/lib/db/tasks_helpers'
 import { getTags, createTag, addTagToTask, removeTagFromTask } from '@/lib/db/tags'
 import { formatDistanceToNow, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -35,13 +36,23 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         if (!taskId) return
 
         const fetchData = async () => {
-            const [t, c, u, tags] = await Promise.all([
+            const [t, c, u, tags, checklist, attachments, timeEntries] = await Promise.all([
                 getTask(taskId),
                 getTaskComments(taskId),
                 getUsers(),
-                getTags()
+                getTags(),
+                getTaskChecklist(taskId),
+                getTaskAttachments(taskId),
+                getTaskTimeEntries(taskId)
             ])
-            setTask(t)
+
+            // Merge parallel data into task object for backward compatibility with UI components that expect them nested
+            setTask({
+                ...t,
+                checklist,
+                attachments,
+                time_entries: timeEntries
+            })
             setComments(c)
             setUsers(u)
             setAllTags(tags)

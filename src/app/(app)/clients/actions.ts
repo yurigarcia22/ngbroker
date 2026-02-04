@@ -9,8 +9,7 @@ export async function getClients(query?: string, status?: string, monthFilter?: 
 
     let request = supabase
         .from('clients')
-        .select('*')
-        .select('*')
+        .select('id, name, type, segment, ticket, status, payment_type, contract_end, contract_start')
         .order('created_at', { ascending: false })
 
     // Auto-update expired clients to 'Analise'
