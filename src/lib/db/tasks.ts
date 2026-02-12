@@ -205,6 +205,12 @@ export async function getTask(taskId: string) {
       ),
       tags:task_tags (
         tag:tags (id, name, color)
+      ),
+      project:projects!inner (
+        id, 
+        name, 
+        client:clients!inner (id, name),
+        statuses:project_statuses(id, name, sort_order)
       )
       `)
         .eq('id', taskId)

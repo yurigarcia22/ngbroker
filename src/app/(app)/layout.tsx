@@ -6,7 +6,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-    title: 'NGBroker',
+    title: 'NG Brain',
     description: 'Sistema de Gestão Interno',
 }
 

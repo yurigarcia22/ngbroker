@@ -1,11 +1,11 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 
-export async function getDashboardStats(supabase: SupabaseClient) {
+export async function getDashboardStats(supabase: SupabaseClient, userId?: string) {
     // Parallelize queries for performance
     const [overdue, today, inProgress, activeClients] = await Promise.all([
-        getOverdueTasksCount(supabase),
-        getTasksDueTodayCount(supabase),
-        getInProgressTasksCount(supabase),
+        getOverdueTasksCount(supabase, userId),
+        getTasksDueTodayCount(supabase, userId),
+        getInProgressTasksCount(supabase, userId),
         getActiveClientsCount(supabase)
     ])
 
@@ -17,20 +17,26 @@ export async function getDashboardStats(supabase: SupabaseClient) {
     }
 }
 
-async function getOverdueTasksCount(supabase: SupabaseClient) {
+async function getOverdueTasksCount(supabase: SupabaseClient, userId?: string) {
     const now = new Date().toISOString()
 
-    // Check if we can filter by exact string or need join
-    // We need to join with project_statuses since 'status' on tasks is likely an ID.
-    // Assuming schema: tasks(status_id) -> project_statuses(id, name)
-    // Supabase filtering on joined tables:
-    // .not('status.name', 'eq', 'Concluído')
-
-    const { count, error } = await supabase
+    let query = supabase
         .from('tasks')
         .select('*, status:project_statuses!inner(name)', { count: 'exact', head: true })
         .lt('due_date', now)
         .neq('status.name', 'Concluído')
+
+    if (userId) {
+        // We use !inner join to filter tasks that have an assignee with this userId
+        query = supabase
+            .from('tasks')
+            .select('*, status:project_statuses!inner(name), assignees:task_assignees!inner(user_id)', { count: 'exact', head: true })
+            .lt('due_date', now)
+            .neq('status.name', 'Concluído')
+            .eq('assignees.user_id', userId)
+    }
+
+    const { count, error } = await query
 
     if (error) {
         console.error('Error fetching overdue tasks:', error)
@@ -40,40 +46,49 @@ async function getOverdueTasksCount(supabase: SupabaseClient) {
     return count || 0
 }
 
-async function getTasksDueTodayCount(supabase: SupabaseClient) {
+async function getTasksDueTodayCount(supabase: SupabaseClient, userId?: string) {
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)
     const endOfDay = new Date()
     endOfDay.setHours(23, 59, 59, 999)
 
-    const { count } = await supabase
+    let query = supabase
         .from('tasks')
         .select('*, status:project_statuses!inner(name)', { count: 'exact', head: true })
         .gte('due_date', startOfDay.toISOString())
         .lte('due_date', endOfDay.toISOString())
         .neq('status.name', 'Concluído')
 
+    if (userId) {
+        query = supabase
+            .from('tasks')
+            .select('*, status:project_statuses!inner(name), assignees:task_assignees!inner(user_id)', { count: 'exact', head: true })
+            .gte('due_date', startOfDay.toISOString())
+            .lte('due_date', endOfDay.toISOString())
+            .neq('status.name', 'Concluído')
+            .eq('assignees.user_id', userId)
+    }
+
+    const { count } = await query
+
     return count || 0
 }
 
-async function getInProgressTasksCount(supabase: SupabaseClient) {
-    const { count } = await supabase
+async function getInProgressTasksCount(supabase: SupabaseClient, userId?: string) {
+    let query = supabase
         .from('tasks')
         .select('*, status:project_statuses!inner(name)', { count: 'exact', head: true })
         .neq('status.name', 'Concluído')
 
-    // In a real app we might want specific "In Project" statuses, but for now just not Concluído
-    // and maybe not "Backlog" if that exists? 
-    // The original code mocked this with * 0.3. 
-    // Let's keep the mock approach for now as I don't want to change logic too much, 
-    // OR better: actually return the real count of non-completed tasks?
-    // The original code was `return Math.floor((count || 0) * 0.3)`. 
-    // I will preserve the original return logic but filter the count first if that makes sense,
-    // OR just leave it as is if the user didn't ask to fix this specific metric.
-    // User specifically asked about "overdue" and "numbers in front of tasks".
-    // I will stick to fixing Overdue specifically. 
-    // But wait, the user said "dashbord esta com problemas esta aparecendo tarefas atrasdas...".
-    // "Overdue" is crucial.
+    if (userId) {
+        query = supabase
+            .from('tasks')
+            .select('*, status:project_statuses!inner(name), assignees:task_assignees!inner(user_id)', { count: 'exact', head: true })
+            .neq('status.name', 'Concluído')
+            .eq('assignees.user_id', userId)
+    }
+
+    const { count } = await query
 
     return Math.floor((count || 0) * 0.3)
 }
@@ -87,10 +102,10 @@ async function getActiveClientsCount(supabase: SupabaseClient) {
     return count || 0
 }
 
-export async function getUrgentTasks(supabase: SupabaseClient) {
+export async function getUrgentTasks(supabase: SupabaseClient, userId?: string) {
     const now = new Date().toISOString()
 
-    const { data } = await supabase
+    let query = supabase
         .from('tasks')
         .select(`
             *,
@@ -98,17 +113,34 @@ export async function getUrgentTasks(supabase: SupabaseClient) {
             status:project_statuses!inner(name),
             assignees:task_assignees(user:profiles(name, avatar_url))
         `)
-        // Filter out completed tasks
         .neq('status.name', 'Concluído')
-        .or(`priority.eq.Urgente,due_date.lt.${now}`) // Order by due date
+        .or(`priority.eq.Urgente,due_date.lt.${now}`)
         .order('due_date', { ascending: true })
         .limit(5)
+
+    if (userId) {
+        query = supabase
+            .from('tasks')
+            .select(`
+                *,
+                project:projects(name, client:clients(name)),
+                status:project_statuses!inner(name),
+                assignees:task_assignees!inner(user_id)
+            `)
+            .neq('status.name', 'Concluído')
+            .or(`priority.eq.Urgente,due_date.lt.${now}`)
+            .eq('assignees.user_id', userId)
+            .order('due_date', { ascending: true })
+            .limit(5)
+    }
+
+    const { data } = await query
 
     return data || []
 }
 
-export async function getActiveProjects(supabase: SupabaseClient) {
-    const { data } = await supabase
+export async function getActiveProjects(supabase: SupabaseClient, userId?: string) {
+    let query = supabase
         .from('projects')
         .select(`
             *,
@@ -116,38 +148,108 @@ export async function getActiveProjects(supabase: SupabaseClient) {
         `)
         .limit(3)
 
-    return data?.map(p => ({
-        ...p,
-        progress: Math.floor(Math.random() * 100) // Mock progress for UI
-    })) || []
+    if (userId) {
+        // Find projects where the user has tasks
+        // This is a bit complex with Supabase direct filtering if not using join.
+        // We can find project_ids from tasks assigned to user first?
+        // Or better, use !inner join on tasks? But tasks is not directly on projects (it is reverse).
+        // Standard way:
+        // .select('*, tasks!inner(assignees!inner(user_id))')
+        // But we want to return projects, not tasks.
+
+        // Let's try:
+        query = supabase
+            .from('projects')
+            .select(`
+                *,
+                client:clients(name),
+                tasks!inner(
+                    assignees!inner(user_id)
+                )
+            `)
+            .eq('tasks.assignees.user_id', userId)
+            .limit(3)
+
+        // Note: This might return duplicate projects if multiple tasks match, but limit 3 helps.
+        // And Supabase deduplication might depend on the query structure.
+        // A safer approach for "projects I am working on" might be a separate RPC or two queries,
+        // but let's try this standard relation filter. 
+        // Actually, if we use !inner on a one-to-many (projects -> tasks), 
+        // it filters projects that have AT LEAST ONE task matching the condition.
+        // However, the `tasks` field in the result will only contain the matching tasks if we don't specify otherwise,
+        // or we might need to remove `tasks` from the result if we don't want to show them.
+        // Since we spread `...p` later, `tasks` property might be there. We should probably strip it or ignore it.
+    }
+
+    const { data } = await query
+
+    return data?.map(p => {
+        // Remove the 'tasks' property if it exists from the join
+        const { tasks, ...project } = p as any
+        return {
+            ...project,
+            progress: Math.floor(Math.random() * 100) // Mock progress for UI
+        }
+    }) || []
 }
 
-export async function getClientHealth(supabase: SupabaseClient) {
-    const { data } = await supabase
+export async function getClientHealth(supabase: SupabaseClient, userId?: string) {
+    let query = supabase
         .from('clients')
-        .select('id, name, health_score, segment')
+        .select('id, name, health_score, segment, status')
+        .eq('status', 'Ativo')
         .limit(3)
-        .order('health_score', { ascending: true }) // Show lowest health first?
+    // .order('health_score', { ascending: true }) 
 
-    // For each client, fetch actual overdue tasks count
-    // We can't do async inside map effectively without Promise.all
+    if (userId) {
+        // Filter clients who have tasks assigned to this user
+        // projects -> tasks -> assignees
+        query = supabase
+            .from('clients')
+            .select('id, name, health_score, segment, status, projects!inner(tasks!inner(assignees!inner(user_id)))')
+            .eq('status', 'Ativo')
+            .eq('projects.tasks.assignees.user_id', userId)
+            .limit(3)
+    }
+
+    const { data } = await query
+
     if (!data) return []
 
     const clientsWithHealth = await Promise.all(data.map(async (c) => {
         const now = new Date().toISOString()
-        const { count } = await supabase
+
+        let countQuery = supabase
             .from('tasks')
             .select('*, project:projects!inner(client_id), status:project_statuses!inner(name)', { count: 'exact', head: true })
             .eq('project.client_id', c.id)
             .lt('due_date', now)
             .neq('status.name', 'Concluído')
 
+        if (userId) {
+            countQuery = supabase
+                .from('tasks')
+                .select('*, project:projects!inner(client_id), status:project_statuses!inner(name), assignees:task_assignees!inner(user_id)', { count: 'exact', head: true })
+                .eq('project.client_id', c.id)
+                .lt('due_date', now)
+                .neq('status.name', 'Concluído')
+                .eq('assignees.user_id', userId)
+        }
+
+        const { count } = await countQuery
+
+        const overdueCount = count || 0
+        // Logic: Start with 100, remove 10 for each overdue task. Min 0.
+        let calculatedHealth = 100 - (overdueCount * 10)
+        if (calculatedHealth < 0) calculatedHealth = 0
+
         return {
             ...c,
-            health: c.health_score ?? 100,
-            overdue_count: count || 0
+            health: calculatedHealth,
+            overdue_count: overdueCount
         }
     }))
 
-    return clientsWithHealth
+    // Sort by health ascending (worst health first)
+    return clientsWithHealth.sort((a, b) => a.health - b.health)
 }

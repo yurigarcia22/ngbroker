@@ -1,506 +1,256 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import { Save, FileText, MonitorPlay, File as FileIcon, X, Plus, Upload, Loader2, ExternalLink, Paperclip, Pencil, Trash2, List, ListOrdered, Minus, Square, CheckSquare } from 'lucide-react'
-import { getDocument, savePageContent, updateDocumentTitle, deleteDocument } from '@/lib/db/documents'
-import { saveVideoDetails, saveFileDetails, deleteDocumentFile } from '@/lib/db/document-artifacts'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Image from '@tiptap/extension-image'
+import TextAlign from '@tiptap/extension-text-align'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
+import { Save, Loader2, Bold, Italic, List, Paperclip, FileText, ChevronLeft, ImageIcon, AlignLeft, AlignCenter, AlignRight, Heading1, Heading2, Type, ListOrdered, CheckSquare } from 'lucide-react'
 
-function BlockEditor({ initialContent, onSave }: { initialContent: any[], onSave: (blocks: any[]) => void }) {
-    const [blocks, setBlocks] = useState<any[]>(initialContent || [])
-    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-    // Auto-save logic
-    const debouncedSave = (newBlocks: any[]) => {
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-        saveTimeoutRef.current = setTimeout(() => {
-            onSave(newBlocks)
-        }, 500) // Reduced from 1000ms to 500ms for faster save, but not flood
-    }
-
-    const updateBlock = (index: number, val: string) => {
-        const newBlocks = [...blocks]
-        const oldBlock = newBlocks[index]
-
-        // Simple YouTube Detection
-        if (oldBlock.type === 'paragraph' && (val.includes('youtube.com/watch') || val.includes('youtu.be/'))) {
-            newBlocks[index] = { type: 'video', content: val }
-        } else {
-            newBlocks[index] = { ...oldBlock, content: val }
-        }
-
-        setBlocks(newBlocks)
-        debouncedSave(newBlocks)
-    }
-
-    const addBlock = (type: string = 'paragraph', index?: number) => {
-        const insertIndex = index !== undefined ? index + 1 : blocks.length;
-        const newBlocks = [...blocks]
-        newBlocks.splice(insertIndex, 0, { type, content: '' })
-        setBlocks(newBlocks)
-        debouncedSave(newBlocks) // Save immediately on structure change
-    }
-
-    const removeBlock = (index: number) => {
-        const newBlocks = [...blocks]
-        newBlocks.splice(index, 1)
-        setBlocks(newBlocks)
-        debouncedSave(newBlocks) // Save immediately on structure change
-    }
-
-    const handleKeyDown = (e: React.KeyboardEvent, index: number, type: string) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            addBlock(type === 'heading' ? 'paragraph' : type, index)
-        } else if (e.key === 'Backspace' && blocks[index].content === '' && blocks.length > 1) {
-            e.preventDefault()
-            removeBlock(index)
-        }
-    }
-
-    return (
-        <div className="space-y-2 max-w-3xl">
-            {blocks.map((block, i) => (
-                <div key={i} className="group relative flex items-start gap-2">
-                    {/* Block Controls (Hover) */}
-                    <div className="absolute -left-8 top-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center">
-                        <button className="text-gray-400 hover:text-red-500 p-0.5" title="Remover" onClick={() => removeBlock(i)}>
-                            <X className="h-3 w-3" />
-                        </button>
-                    </div>
-
-                    {/* Block Render */}
-                    <div className="flex-1 min-w-0">
-                        {block.type === 'heading' ? (
-                            <input
-                                className="w-full text-2xl font-bold border-none focus:ring-0 p-0 placeholder-gray-300 bg-transparent"
-                                placeholder="Título section"
-                                value={block.content}
-                                onChange={(e) => updateBlock(i, e.target.value)}
-                                onKeyDown={(e) => handleKeyDown(e, i, 'heading')}
-                                autoFocus={blocks.length > 0 && String(blocks[blocks.length - 1].content) === '' && i === blocks.length - 1}
-                            />
-                        ) : block.type === 'bullet-list' ? (
-                            <div className="flex items-start gap-2">
-                                <div className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-800 shrink-0" />
-                                <textarea
-                                    className="w-full resize-none overflow-hidden bg-transparent border-none focus:ring-0 p-0 text-gray-700 placeholder-gray-300 leading-relaxed"
-                                    placeholder="Item da lista"
-                                    rows={1}
-                                    value={block.content}
-                                    onChange={(e) => {
-                                        e.target.style.height = 'auto';
-                                        e.target.style.height = e.target.scrollHeight + 'px';
-                                        updateBlock(i, e.target.value)
-                                    }}
-                                    onKeyDown={(e) => handleKeyDown(e, i, 'bullet-list')}
-                                />
-                            </div>
-                        ) : block.type === 'numbered-list' ? (
-                            <div className="flex items-start gap-2">
-                                <span className="font-medium text-gray-500 select-none mt-0.5">1.</span>
-                                <textarea
-                                    className="w-full resize-none overflow-hidden bg-transparent border-none focus:ring-0 p-0 text-gray-700 placeholder-gray-300 leading-relaxed"
-                                    placeholder="Item numerado"
-                                    rows={1}
-                                    value={block.content}
-                                    onChange={(e) => {
-                                        e.target.style.height = 'auto';
-                                        e.target.style.height = e.target.scrollHeight + 'px';
-                                        updateBlock(i, e.target.value)
-                                    }}
-                                    onKeyDown={(e) => handleKeyDown(e, i, 'numbered-list')}
-                                />
-                            </div>
-                        ) : block.type === 'divider' ? (
-                            <div className="py-4">
-                                <hr className="border-t border-gray-200" />
-                            </div>
-                        ) : block.type === 'video' ? (
-                            <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden my-2 border border-gray-200 shadow-sm relative group/video">
-                                <iframe
-                                    src={block.content.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}
-                                    className="w-full h-full"
-                                    allowFullScreen
-                                />
-                                <button className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-red-500 hover:bg-white opacity-0 group-hover/video:opacity-100 transition-opacity" onClick={() => {
-                                    const newBlocks = [...blocks];
-                                    newBlocks[i] = { type: 'paragraph', content: block.content };
-                                    setBlocks(newBlocks);
-                                }}>
-                                    <Pencil className="h-4 w-4" />
-                                </button>
-                            </div>
-                        ) : (
-                            <textarea
-                                className="w-full resize-none overflow-hidden bg-transparent border-none focus:ring-0 p-0 text-gray-700 placeholder-gray-300 leading-relaxed"
-                                placeholder={"Digite '/' para comandos..."}
-                                rows={1}
-                                value={block.content}
-                                onChange={(e) => {
-                                    e.target.style.height = 'auto';
-                                    e.target.style.height = e.target.scrollHeight + 'px';
-                                    updateBlock(i, e.target.value)
-                                }}
-                                onKeyDown={(e) => handleKeyDown(e, i, 'paragraph')}
-                            />
-                        )}
-                    </div>
-                </div>
-            ))}
-
-            {/* Quick Add Menu */}
-            <div className="pt-4 border-t border-gray-100 flex gap-2 flex-wrap text-sm text-gray-500 opacity-40 hover:opacity-100 transition-opacity duration-200">
-                <button onClick={() => addBlock('paragraph')} className="hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1"><FileText className="h-3 w-3" /> Texto</button>
-                <button onClick={() => addBlock('heading')} className="hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1"><span className="font-bold text-xs">H1</span> Título</button>
-                <button onClick={() => addBlock('bullet-list')} className="hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1"><List className="h-3 w-3" /> Lista</button>
-                <button onClick={() => addBlock('numbered-list')} className="hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1"><ListOrdered className="h-3 w-3" /> Num</button>
-                <button onClick={() => addBlock('divider')} className="hover:bg-gray-100 px-2 py-1 rounded flex items-center gap-1"><Minus className="h-3 w-3" /> Divisor</button>
-            </div>
-
-            {blocks.length === 0 && (
-                <div className="text-gray-400 italic cursor-pointer p-4 border border-dashed rounded-lg hover:bg-gray-50" onClick={() => addBlock()}>
-                    Clique para começar a escrever...
-                </div>
-            )}
-        </div>
-    )
+interface DocumentEditorProps {
+    initialId?: string
+    initialTitle?: string
+    initialContent?: any
 }
 
-export function DocumentEditor({ id }: { id: string }) {
-    const [doc, setDoc] = useState<any>(null)
-    const [loading, setLoading] = useState(true)
-    const [title, setTitle] = useState('')
-    const [isDragging, setIsDragging] = useState(false)
-    const [uploading, setUploading] = useState(false)
-    const router = useRouter()
+export function DocumentEditor({ initialId, initialTitle = '', initialContent }: DocumentEditorProps) {
+    const [title, setTitle] = useState(initialTitle)
+    const [isSaving, setIsSaving] = useState(false)
+    const [lastSaved, setLastSaved] = useState<Date | null>(null)
+    const [docId, setDocId] = useState<string | null>(initialId || null)
 
-    // Video States
-    const [videoUrl, setVideoUrl] = useState('')
+    // Attachments State
+    const [attachments, setAttachments] = useState<any[]>([])
+    const [isUploading, setIsUploading] = useState(false)
 
-    // File States
-    const fileInputRef = useRef<HTMLInputElement>(null)
+    const supabase = createClient()
 
-    // Realtime
+    const editor = useEditor({
+        extensions: [
+            StarterKit, // Includes BulletList, OrderedList, Heading, etc.
+            Image.configure({
+                inline: true,
+                allowBase64: true,
+            }),
+            TextAlign.configure({
+                types: ['heading', 'paragraph'],
+                alignments: ['left', 'center', 'right', 'justify'],
+            }),
+            TaskList,
+            TaskItem.configure({
+                nested: true,
+            }),
+        ],
+        content: initialContent || '',
+        editorProps: {
+            attributes: {
+                class: 'prose prose-lg max-w-none focus:outline-none min-h-[800px] marker:text-gray-400', // Prose for styling
+            },
+        },
+        immediatelyRender: false,
+    })
+
+    // Update internal state if props change (switching docs)
     useEffect(() => {
-        load()
-
-        const supabase = createClient()
-        const channel = supabase
-            .channel('document-changes')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'documents', filter: `id=eq.${id}` },
-                (payload) => {
-                    if (payload.eventType === 'UPDATE') {
-                        setTitle(payload.new.title)
-                        setDoc((prev: any) => prev ? { ...prev, ...payload.new } : null)
-                    }
-                    if (payload.eventType === 'DELETE') {
-                        router.push('/documents')
-                        router.refresh()
-                    }
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'document_pages', filter: `document_id=eq.${id}` },
-                (payload) => {
-                    load()
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'document_files', filter: `document_id=eq.${id}` },
-                () => {
-                    load()
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'document_videos', filter: `document_id=eq.${id}` },
-                () => {
-                    load()
-                }
-            )
-            .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
+        if (initialId !== docId) {
+            setDocId(initialId || null)
+            setTitle(initialTitle)
+            editor?.commands.setContent(initialContent || '')
+            if (initialId) fetchAttachments(initialId)
+            else setAttachments([])
         }
-    }, [id])
+    }, [initialId, initialTitle, initialContent, editor])
 
-    const load = async () => {
-        const data = await getDocument(id)
-        if (data) {
-            setDoc(data)
-            setTitle(data.title)
-            if (data.video) setVideoUrl(data.video.video_url)
-        }
-        setLoading(false)
+    const fetchAttachments = async (id: string) => {
+        const { data } = await supabase.from('doc_attachments').select('*').eq('page_id', id).order('created_at', { ascending: false })
+        if (data) setAttachments(data)
     }
 
-    const handleTitleChange = async (val: string) => {
-        setTitle(val)
-        updateDocumentTitle(id, val)
-    }
+    const handleSave = async () => {
+        if (!editor || !docId) return
 
-    const handleContentSave = async (blocks: any[]) => {
-        await savePageContent(id, blocks)
-    }
-
-    const handleVideoBlur = async () => {
-        if (!videoUrl || videoUrl === doc.video?.video_url) return
-        let provider = 'custom'
-        if (videoUrl.includes('youtube')) provider = 'youtube'
-        if (videoUrl.includes('vimeo')) provider = 'vimeo'
-        if (videoUrl.includes('loom')) provider = 'loom'
-
-        await saveVideoDetails(id, provider, videoUrl)
-    }
-
-    const handleDeleteDocument = async () => {
-        if (!confirm('Tem certeza que deseja excluir este documento?')) return
-
-        setLoading(true)
-        const { error } = await deleteDocument(id)
-        if (error) {
-            alert('Erro ao excluir documento')
-            setLoading(false)
-        } else {
-            router.push('/documents')
-            router.refresh()
-        }
-    }
-
-    const handleDeleteFile = async (fileId: string, filePath: string) => {
-        if (!confirm('Tem certeza que deseja excluir este anexo?')) return
-
-        const { error } = await deleteDocumentFile(fileId, filePath)
-        if (error) {
-            alert('Erro ao excluir arquivo')
-        }
-    }
-
-    const uploadFile = async (file: File) => {
-        setUploading(true)
-        const supabase = createClient()
-        const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-        const fileName = `${Date.now()}-${sanitizedName}`
-
+        setIsSaving(true)
         try {
-            const { data, error } = await supabase.storage
-                .from('documents-files')
-                .upload(fileName, file)
+            const content = editor.getJSON()
+
+            const payload: any = {
+                conteudo: content,
+                updated_at: new Date().toISOString()
+            }
+
+            const { data, error } = await supabase
+                .from('documentos')
+                .update(payload)
+                .eq('id', docId)
+                .select()
+                .single()
 
             if (error) throw error
 
-            const { data: publicUrl } = supabase.storage.from('documents-files').getPublicUrl(fileName)
+            if (data) {
+                setLastSaved(new Date())
+            }
 
-            const { error: dbError } = await saveFileDetails(id, publicUrl.publicUrl, file.name, file.size, file.type)
+        } catch (error: any) {
+            console.error('Erro ao salvar:', error)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    // Image Upload
+    const handleAddImage = () => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/*'
+        input.onchange = async (e: any) => {
+            const file = e.target.files[0]
+            if (file) {
+                const url = await uploadImage(file)
+                if (url && editor) {
+                    editor.chain().focus().setImage({ src: url }).run()
+                }
+            }
+        }
+        input.click()
+    }
+
+    const uploadImage = async (file: File): Promise<string | null> => {
+        setIsUploading(true)
+        try {
+            const fileExt = file.name.split('.').pop()
+            const fileName = `editor-images/${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+
+            const { error: uploadError } = await supabase.storage.from('arquivos').upload(fileName, file)
+            if (uploadError) throw uploadError
+
+            const { data: { publicUrl } } = supabase.storage.from('arquivos').getPublicUrl(fileName)
+            return publicUrl
+        } catch (error: any) {
+            console.error('Upload failed:', error)
+            alert('Erro no upload de imagem')
+            return null
+        } finally {
+            setIsUploading(false)
+        }
+    }
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !docId) {
+            if (!docId) alert('Salve o documento antes de usar anexos.')
+            return
+        }
+
+        setIsUploading(true)
+        const file = e.target.files[0]
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${docId}/${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+
+        try {
+            const { error: uploadError } = await supabase.storage.from('arquivos').upload(fileName, file)
+            if (uploadError) throw uploadError
+
+            const { data: { publicUrl } } = supabase.storage.from('arquivos').getPublicUrl(fileName)
+
+            const { error: dbError } = await supabase.from('doc_attachments').insert({
+                page_id: docId,
+                file_name: file.name,
+                file_url: publicUrl,
+                file_type: file.type,
+                size_bytes: file.size
+            })
             if (dbError) throw dbError
 
-            await load()
-        } catch (err: any) {
-            console.error('Upload error:', err)
-            alert('Falha ao enviar arquivo: ' + (err.message || 'Erro desconhecido'))
+            fetchAttachments(docId)
+
+        } catch (error: any) {
+            console.error('Upload failed:', error)
         } finally {
-            setUploading(false)
+            setIsUploading(false)
         }
     }
 
-    const handleDrop = async (e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragging(false)
-
-        if (doc.doc_type !== 'page') return
-
-        const files = Array.from(e.dataTransfer.files)
-        if (files.length > 0) {
-            await uploadFile(files[0])
-        }
-    }
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (!isDragging && doc.doc_type === 'page') setIsDragging(true)
-    }
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (isDragging) setIsDragging(false)
-    }
-
-    const handleFileUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (file) await uploadFile(file)
-    }
-
-    if (loading) return <div className="flex items-center justify-center h-full text-gray-400"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Carregando...</div>
-    if (!doc) return <div className="flex items-center justify-center h-full text-gray-400">Documento não encontrado</div>
+    if (!editor) return null
 
     return (
-        <div
-            className={cn("flex flex-col h-full bg-white relative", isDragging && "bg-indigo-50")}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-        >
-            {isDragging && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-indigo-50/90 border-4 border-indigo-200 border-dashed m-4 rounded-xl">
-                    <div className="text-indigo-600 font-medium text-lg flex flex-col items-center">
-                        <Upload className="h-12 w-12 mb-2" />
-                        Solte para anexar arquivo
-                    </div>
-                </div>
-            )}
+        <div className="flex flex-col h-screen bg-[#F0F2F5] overflow-hidden relative">
 
-            {/* Header */}
-            <div className="h-16 border-b border-gray-100 flex items-center px-8 justify-between shrink-0">
-                <div className="flex items-center gap-3 flex-1">
-                    <div className="p-2 rounded bg-gray-50 text-gray-500">
-                        {doc.doc_type === 'page' ? <FileText className="h-5 w-5" /> :
-                            doc.doc_type === 'video' ? <MonitorPlay className="h-5 w-5" /> : <FileIcon className="h-5 w-5" />}
-                    </div>
-                    <input
-                        className="text-lg font-semibold text-gray-900 bg-transparent border-none focus:ring-0 p-0 placeholder-gray-300 w-full"
-                        value={title}
-                        onChange={(e) => handleTitleChange(e.target.value)}
-                        placeholder="Sem título"
-                    />
+            {/* Status & Save Button */}
+            <div className="absolute top-4 right-8 z-50 flex items-center gap-2">
+                <div className="bg-white/80 backdrop-blur px-3 py-1 rounded-full text-xs text-gray-500 shadow-sm border border-gray-100">
+                    {isSaving ? 'Salvando...' : lastSaved ? `Salvo ${lastSaved.toLocaleTimeString()}` : 'Pronto'}
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="text-xs text-gray-300">
-                        {uploading ? 'Enviando...' : 'Salvo'}
-                    </div>
-                    <button
-                        onClick={handleDeleteDocument}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                        title="Excluir documento"
-                    >
-                        <Trash2 className="h-5 w-5" />
-                    </button>
-                </div>
+                <button
+                    onClick={handleSave}
+                    className="flex items-center gap-2 bg-[#C2E7FF] text-[#001D35] px-4 py-2 rounded-full hover:bg-[#b3dfff] transition-colors font-medium text-sm shadow-sm"
+                >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Salvar
+                </button>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full">
-                {doc.doc_type === 'page' && (
-                    <>
-                        <BlockEditor
-                            key={doc.updated_at}
-                            initialContent={doc.content?.[0]?.content_json || []}
-                            onSave={handleContentSave}
-                        />
 
-                        {/* Attachments Section */}
-                        {doc.files && doc.files.length > 0 && (
-                            <div className="mt-12 pt-6 border-t border-gray-100">
-                                <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                    <Paperclip className="h-4 w-4" />
-                                    Anexos ({doc.files.length})
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {doc.files.map((file: any) => (
-                                        <div key={file.id} className="p-3 border rounded-lg flex items-center gap-3 bg-gray-50/50 hover:bg-gray-100 transition-colors group">
-                                            <div className="h-8 w-8 bg-white rounded border flex items-center justify-center text-gray-400">
-                                                <FileIcon className="h-4 w-4" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-gray-700 truncate" title={file.file_name}>{file.file_name}</div>
-                                                <div className="text-xs text-gray-400">{(file.size_bytes / 1024 / 1024).toFixed(2)} MB</div>
-                                            </div>
-                                            <a href={file.file_path} target="_blank" rel="noopener noreferrer" className="p-1.5 text-gray-400 hover:text-indigo-600 rounded bg-white border border-transparent hover:border-indigo-100" title="Abrir">
-                                                <ExternalLink className="h-3.5 w-3.5" />
-                                            </a>
-                                            <button
-                                                onClick={() => handleDeleteFile(file.id, file.file_path)}
-                                                className="p-1.5 text-gray-400 hover:text-red-600 rounded bg-white border border-transparent hover:border-red-100"
-                                                title="Excluir anexo"
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </>
-                )}
+            {/* Toolbar (Enhanced) */}
+            <div className="bg-[#EDF2FA] px-4 py-1.5 flex items-center gap-1.5 border-b border-gray-300 shrink-0 z-10 mx-4 my-2 rounded-full justify-center max-w-5xl self-center shadow-sm">
+                <button onClick={() => editor.chain().focus().undo().run()} className="p-1.5 hover:bg-black/5 rounded text-gray-700"><ChevronLeft className="h-4 w-4" /></button>
+                <div className="h-4 w-px bg-gray-300 mx-1" />
 
-                {doc.doc_type === 'video' && (
-                    <div className="space-y-6">
-                        <div>
-                            <label className="text-sm font-medium text-gray-700 block mb-1">URL do Vídeo</label>
-                            <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                placeholder="https://..."
-                                value={videoUrl}
-                                onChange={(e) => setVideoUrl(e.target.value)}
-                                onBlur={handleVideoBlur}
-                            />
-                        </div>
-                        <div className="aspect-video bg-gray-900 rounded-xl flex items-center justify-center text-white overflow-hidden shadow-lg">
-                            {doc.video ? (
-                                <iframe
-                                    src={doc.video.video_url.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}
-                                    className="w-full h-full"
-                                    allowFullScreen
-                                />
-                            ) : (
-                                <span className="text-gray-500">Adicione uma URL para visualizar</span>
-                            )}
-                        </div>
-                    </div>
-                )}
+                {/* Text Style / Headings */}
+                <button onClick={() => editor.chain().focus().setParagraph().run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('paragraph') ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Normal Text"><Type className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('heading', { level: 1 }) ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Heading 1"><Heading1 className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('heading', { level: 2 }) ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Heading 2"><Heading2 className="h-4 w-4" /></button>
 
-                {doc.doc_type === 'file' && (
-                    <div className="space-y-6">
-                        {doc.files && doc.files.length > 0 ? (
-                            <div className="p-4 border rounded-xl flex items-center gap-4 bg-gray-50">
-                                <div className="h-10 w-10 bg-white rounded-lg border flex items-center justify-center text-gray-400">
-                                    <FileIcon className="h-5 w-5" />
-                                </div>
-                                <div className="flex-1">
-                                    <div className="font-medium text-gray-900">{doc.files[0].file_name}</div>
-                                    <div className="text-xs text-gray-500">{(doc.files[0].size_bytes / 1024 / 1024).toFixed(2)} MB</div>
-                                </div>
-                                <a href={doc.files[0].file_path} target="_blank" rel="noopener noreferrer" className="p-2 text-indigo-600 hover:bg-indigo-50 rounded" title="Abrir">
-                                    <ExternalLink className="h-4 w-4" />
-                                </a>
-                                <button
-                                    onClick={() => handleDeleteFile(doc.files[0].id, doc.files[0].file_path)}
-                                    className="p-2 text-gray-400 hover:text-red-500 rounded bg-white border border-transparent hover:border-red-100"
-                                    title="Excluir arquivo"
-                                >
-                                    <Trash2 className="h-5 w-5" />
+                <div className="h-4 w-px bg-gray-300 mx-1" />
+
+                {/* Alignment */}
+                <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive({ textAlign: 'left' }) ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Align Left"><AlignLeft className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive({ textAlign: 'center' }) ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Align Center"><AlignCenter className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive({ textAlign: 'right' }) ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Align Right"><AlignRight className="h-4 w-4" /></button>
+
+                <div className="h-4 w-px bg-gray-300 mx-1" />
+
+                <button onClick={() => editor.chain().focus().toggleBold().run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('bold') ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`}><Bold className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('italic') ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`}><Italic className="h-4 w-4" /></button>
+
+                <div className="h-4 w-px bg-gray-300 mx-1" />
+
+                {/* Lists */}
+                <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('bulletList') ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Lista de Pontos"><List className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('orderedList') ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Lista Numérica"><ListOrdered className="h-4 w-4" /></button>
+                <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={`p-1.5 rounded hover:bg-black/5 ${editor.isActive('taskList') ? 'bg-blue-100 text-blue-700' : 'text-gray-700'}`} title="Lista de Tarefas"><CheckSquare className="h-4 w-4" /></button>
+
+                <div className="h-4 w-px bg-gray-300 mx-1" />
+                <button onClick={handleAddImage} className="p-1.5 rounded hover:bg-black/5 text-gray-700" title="Inserir Imagem (Upload)"><ImageIcon className="h-4 w-4" /></button>
+            </div>
+
+            {/* Editor */}
+            <div className="flex-1 overflow-y-auto w-full flex flex-col items-center py-8 px-4" onClick={() => editor.chain().focus().run()}>
+                <div className="w-full max-w-[850px] bg-white text-black shadow-md min-h-[1100px] p-12 sm:p-16 mb-8 cursor-text border border-gray-200 relative" onClick={(e) => e.stopPropagation()}>
+                    <EditorContent editor={editor} />
+                </div>
+                {/* Attachments Section... */}
+                {docId && (
+                    <div className="w-full max-w-[850px] mb-20">
+                        <div className="flex items-center justify-between mb-2 px-1">
+                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Anexos</h3>
+                            <div className="relative">
+                                <input type="file" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isUploading} />
+                                <button className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors font-medium">
+                                    {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />} Adicionar
                                 </button>
                             </div>
-                        ) : (
-                            <div
-                                className="p-12 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all cursor-pointer"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                {uploading ? (
-                                    <Loader2 className="h-8 w-8 animate-spin text-indigo-500 mb-2" />
-                                ) : (
-                                    <Upload className="h-8 w-8 mb-2" />
-                                )}
-                                <span className="text-sm font-medium text-gray-600">Clique para enviar um arquivo</span>
-                                <input
-                                    type="file"
-                                    className="hidden"
-                                    ref={fileInputRef}
-                                    onChange={handleFileUploadChange}
-                                    disabled={uploading}
-                                />
-                            </div>
-                        )}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                            {attachments.map(att => (
+                                <div key={att.id} className="flex items-center p-2 bg-white border border-gray-200 rounded hover:shadow-sm">
+                                    <div className="h-8 w-8 flex items-center justify-center bg-gray-100 rounded text-gray-500 mr-3"><FileText className="h-4 w-4" /></div>
+                                    <span className="text-sm text-gray-700 flex-1 truncate">{att.file_name}</span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>

@@ -1,7 +1,144 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
 
 @layer base {
   body {
-    @apply antialiased bg-[#F8FAF9];
+    @apply antialiased bg-slate-50 text-slate-900;
+    min-height: 100vh;
+    background: radial-gradient(circle at top left, #f8fafc, #e2e8f0 40%, #cbd5e1 100%);
+    overflow-x: hidden;
   }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-xl;
+  }
+
+  .glass-sidebar {
+    @apply bg-slate-900/95 backdrop-blur-xl border-r border-white/5;
+  }
+}
+
+/* TipTap Editor Styles */
+.ProseMirror {
+  outline: none;
+}
+
+/* Headings */
+.ProseMirror h1 {
+  font-size: 2.25em !important;
+  font-weight: 800 !important;
+  line-height: 1.1;
+  margin-bottom: 0.5em;
+  color: #111827;
+}
+
+.ProseMirror h2 {
+  font-size: 1.75em !important;
+  font-weight: 700 !important;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  color: #1f2937;
+}
+
+.ProseMirror h3 {
+  font-size: 1.5em !important;
+  font-weight: 600 !important;
+  color: #374151;
+}
+
+/* Lists - Force Markers to Black */
+.ProseMirror ul,
+.ProseMirror ol {
+  padding: 0 1rem;
+  margin: 1.25rem 1rem 1.25rem 0.4rem;
+  color: #000 !important;
+  /* Text color inside lists */
+}
+
+.ProseMirror ul {
+  list-style-type: disc !important;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal !important;
+}
+
+/* Force Marker Colors */
+.ProseMirror li::marker {
+  color: #000 !important;
+  /* Black Bullets and Numbers */
+  font-weight: bold;
+}
+
+
+/* Task Lists - Robust Fix */
+ul[data-type="taskList"] {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+li[data-type="taskItem"] {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  margin-bottom: 0.5rem !important;
+}
+
+li[data-type="taskItem"]>label {
+  flex: 0 0 auto !important;
+  margin-right: 0.75rem !important;
+  user-select: none !important;
+  cursor: pointer !important;
+  margin-top: 0.25rem !important;
+  /* Align with text baseline approx */
+}
+
+li[data-type="taskItem"]>div {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  /* Allow flex shrink if needed */
+  margin: 0 !important;
+}
+
+/* Checkbox Style */
+li[data-type="taskItem"]>label>input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid #000;
+  /* Black Border */
+  border-radius: 0.25rem;
+  background-color: white;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  margin: 0;
+}
+
+li[data-type="taskItem"]>label>input[type="checkbox"]::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  transform: scale(0);
+  transition: 120ms transform ease-in-out;
+  box-shadow: inset 1em 1em white;
+  transform-origin: center;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  background-color: white;
+  /* Tick color */
+}
+
+li[data-type="taskItem"]>label>input[type="checkbox"]:checked {
+  background-color: #000;
+  /* Black Background when checked */
+  border-color: #000;
+}
+
+li[data-type="taskItem"]>label>input[type="checkbox"]:checked::before {
+  transform: scale(1);
 }

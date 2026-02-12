@@ -82,7 +82,22 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `id=eq.${taskId}` }, () => {
                 getTask(taskId).then(t => {
-                    setTask(t)
+                    // CRITICAL: Merge with existing to preserve local-only or pre-fetched fields if t is missing them
+                    // But usually t from getTask IS the source of truth for the task record.
+                    // However, we must ensure we don't lose the 'project' reference if getTask somehow fails to join correctly (unlikely with new fix).
+                    // We also need to preserve checklist/attachments/time_entries which are stored in SEPARATE states in this component,
+                    // BUT they were merged into 'task' state for backward compatibility. 
+                    // To be safe, we re-merge them here using current state values.
+
+                    setTask((prev: any) => ({
+                        ...prev,
+                        ...t,
+                        // Preserve sub-resources from state if not returned by getTask
+                        checklist: checklistItems,
+                        attachments: prev?.attachments, // these are not fully reactive in this block yet
+                        time_entries: prev?.time_entries
+                    }))
+
                     if (onUpdate) onUpdate(t)
                 })
             })

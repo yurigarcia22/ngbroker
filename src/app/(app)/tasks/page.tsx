@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense, useMemo } from 'react'
+import useSWR from 'swr'
 
 import { PageHeader } from '@/components/ui/page-header'
 import { getAllTasks, updateTask } from '@/lib/db/tasks'
@@ -15,7 +16,7 @@ import { format, startOfDay, isToday, isPast, addDays, isWithinInterval, startOf
 import { ptBR } from 'date-fns/locale'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import useSWR from 'swr'
+import { useDebounce } from '@/hooks/use-debounce'
 
 // Fetcher for SWR
 const fetcher = async (key: string) => {
@@ -33,14 +34,16 @@ function TasksContent() {
     const pathname = usePathname()
 
     // Data state
-    const [tasks, setTasks] = useState<any[]>([])
-    const [loading, setLoading] = useState(true)
+    // Data state
+    // SWR handles data and loading state now
+
 
     // UI state
     const [activeTab, setActiveTab] = useState<'my' | 'projects' | 'clients' | 'all'>('my')
     const [activeFilter, setActiveFilter] = useState<'today' | 'pending' | 'overdue' | 'completed' | 'next-week' | 'all'>('today')
     const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false)
     const [search, setSearch] = useState('')
+    const debouncedSearch = useDebounce(search, 500) // Debounce search for 500ms
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
     const [page, setPage] = useState(1)
     const ITEMS_PER_PAGE = 30
@@ -66,7 +69,7 @@ function TasksContent() {
         // Only fetch if we have user ID (if 'my' tab) or other tabs.
         // If 'my' tab and no user ID yet, return null key to pause.
         (activeTab === 'my' && !currentUserId) ? null : JSON.stringify(['tasks', {
-            search: search || undefined,
+            search: debouncedSearch || undefined,
             projectId: activeTab === 'projects' ? undefined : undefined, // Grouping logic handles filtering usually? No, grouping fetches all.
             // If activeTab is 'my', we filter by assignee.
             assigneeId: activeTab === 'my' && currentUserId ? [currentUserId] : undefined,
@@ -83,17 +86,9 @@ function TasksContent() {
         }
     )
 
-    useEffect(() => {
-        if (tasksData) {
-            setTasks(tasksData)
-            setLoading(false)
-        }
-    }, [tasksData])
+    const tasks = (tasksData as any[]) || []
+    const loading = swrLoading
 
-    // Sync loading state 
-    useEffect(() => {
-        setLoading(swrLoading)
-    }, [swrLoading])
 
     const handleTaskClick = (id: string) => {
         const params = new URLSearchParams(searchParams)
@@ -107,10 +102,10 @@ function TasksContent() {
 
     const handleTaskUpdate = (updatedTask?: any) => {
         if (!updatedTask) {
-            fetchTasks()
+            mutate()
             return
         }
-        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t))
+        mutate((prev: any[]) => prev?.map((t: any) => t.id === updatedTask.id ? updatedTask : t), false)
     }
 
     const handleToggleStatus = async (task: any) => {
@@ -128,20 +123,19 @@ function TasksContent() {
 
         if (newStatus) {
             // Optimistic update
-            const updatedTask = { ...task, status: newStatus, status_id: newStatus.id }
-            setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t))
-            await updateTask(task.id, { status_id: newStatus.id })
+            // CRITICAL: Ensure we preserve the project/client data, and status object structure.
+            const updatedTask = {
+                ...task,
+                status: newStatus,
+                status_id: newStatus.id,
+                // Explicitly preserve project if it exists (redundant with ...task but safe)
+                project: task.project
+            }
 
-            // Only refetch if we are in a mode where checking/unchecking removes the item (like "Pending" filter)
-            // But user complains "tive que atualizar a page". 
-            // If we are in "Pending" filter and we complete it, it SHOULD execute removal.
-            // But if we use optimistic update, it might disappear instantly?
-            // Actually, if we update local state, `filteredTasks` useMemo will run and filter it out.
-            // That is desired behavior usually. 
-            // But if we want it to "stay" for a moment or just update, local update is fine.
-            // We just need to ensure `fetchTasks` doesn't overwrite it with old data if race condition.
-            // But here we await updateTask.
-            // fetchTasks() // Sync - Removing full sync to rely on local update effectively.
+            mutate((prev: any[]) => prev?.map((t: any) => t.id === task.id ? updatedTask : t), false)
+
+            // Perform DB update
+            await updateTask(task.id, { status_id: newStatus.id })
         }
     }
 
@@ -153,7 +147,7 @@ function TasksContent() {
             // Server filtered, but ensure consistency if cache is stale or optimistically updated
             // No strict need to filter again if we trust server, but harmless to keep for safety
             if (currentUserId) {
-                result = result.filter(t => t.assignees?.some((a: any) => a.user.id === currentUserId))
+                result = result.filter((t: any) => t.assignees?.some((a: any) => a.user.id === currentUserId))
             }
         }
         // Projects and Clients tabs are handled in the rendering logic (grouping), 
@@ -167,7 +161,7 @@ function TasksContent() {
 
         const today = startOfDay(new Date())
 
-        return result.filter(task => {
+        return result.filter((task: any) => {
             const isDone = task.status?.name?.toLowerCase().includes('concluíd')
                 || task.status?.name?.toLowerCase().includes('done')
                 || task.status?.name?.toLowerCase().includes('finalizado')
@@ -216,8 +210,8 @@ function TasksContent() {
     const derivedStatuses = useMemo(() => Array.from(
         new Map(
             (tasks || [])
-                .filter(t => t.status && typeof t.status === 'object' && 'id' in t.status)
-                .map(t => [t.status.id, t.status])
+                .filter((t: any) => t.status && typeof t.status === 'object' && 'id' in t.status)
+                .map((t: any) => [t.status.id, t.status])
         ).values()
     ).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0)), [tasks])
 
@@ -331,10 +325,10 @@ function TasksContent() {
                 {/* Grouped Rendering Logic */}
                 {(() => {
                     // Helper to organize tasks
-                    const getGroupedTasks = () => {
+                    const getGroupedTasks = (): Record<string, any[]> => {
                         if (activeTab === 'projects') {
                             const groups: Record<string, any[]> = {}
-                            filteredTasks.forEach(t => {
+                            filteredTasks.forEach((t: any) => {
                                 const key = t.project?.name || 'Sem Projeto'
                                 if (!groups[key]) groups[key] = []
                                 groups[key].push(t)
@@ -343,7 +337,7 @@ function TasksContent() {
                         }
                         if (activeTab === 'clients') {
                             const groups: Record<string, any[]> = {}
-                            filteredTasks.forEach(t => {
+                            filteredTasks.forEach((t: any) => {
                                 const key = t.project?.client?.name || 'Sem Cliente'
                                 if (!groups[key]) groups[key] = []
                                 groups[key].push(t)
@@ -406,7 +400,7 @@ function TasksContent() {
                                                             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">{group}</h3>
                                                         )}
                                                         <ul className="space-y-3">
-                                                            {tasksInGroup.map((task) => (
+                                                            {tasksInGroup.map((task: any) => (
                                                                 <TaskListItem
                                                                     key={task.id}
                                                                     task={task}
