@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { ActiveTimer } from '../tasks/time-tracker/active-timer'
 
 export function Topbar() {
     const router = useRouter()
@@ -15,7 +16,9 @@ export function Topbar() {
 
     return (
         <div className="flex h-16 flex-shrink-0 bg-white border-b shadow-sm px-6 items-center justify-between">
-            <div className="flex-1"></div>
+            <div className="flex-1 flex justify-center">
+                <ActiveTimer />
+            </div>
             <div className="flex items-center space-x-4">
                 <button
                     onClick={handleSignOut}

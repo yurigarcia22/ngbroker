@@ -66,29 +66,26 @@ function TasksContent() {
 
     // SWR Integration
     const { data: tasksData, error, mutate, isLoading: swrLoading } = useSWR(
-        // Only fetch if we have user ID (if 'my' tab) or other tabs.
-        // If 'my' tab and no user ID yet, return null key to pause.
         (activeTab === 'my' && !currentUserId) ? null : JSON.stringify(['tasks', {
             search: debouncedSearch || undefined,
-            projectId: activeTab === 'projects' ? undefined : undefined, // Grouping logic handles filtering usually? No, grouping fetches all.
-            // If activeTab is 'my', we filter by assignee.
+            projectId: activeTab === 'projects' ? undefined : undefined,
             assigneeId: activeTab === 'my' && currentUserId ? [currentUserId] : undefined,
             page,
-            limit: ITEMS_PER_PAGE
+            limit: ITEMS_PER_PAGE,
+            activeFilter, // Pass filter to server
         }]),
         async (key) => {
             const [_, params] = JSON.parse(key)
             return await getAllTasks(params)
         },
         {
-            revalidateOnFocus: false, // Don't aggressive revalidate
-            dedupingInterval: 60000, // Cache for 1 min
+            revalidateOnFocus: false,
+            dedupingInterval: 60000,
         }
     )
 
     const tasks = (tasksData as any[]) || []
     const loading = swrLoading
-
 
     const handleTaskClick = (id: string) => {
         const params = new URLSearchParams(searchParams)
@@ -105,115 +102,56 @@ function TasksContent() {
             mutate()
             return
         }
-        mutate((prev: any[]) => prev?.map((t: any) => t.id === updatedTask.id ? updatedTask : t), false)
+        mutate((prev: any[] | undefined) => (prev || []).map((t: any) => t.id === updatedTask.id ? updatedTask : t), false)
     }
 
     const handleToggleStatus = async (task: any) => {
-        // Find "Concluída" status from the project's specific statuses if available, 
-        // fallback to derived if not (backward compatibility)
         const projectStatuses = task.project?.statuses || derivedStatuses
-
         const doneStatus = projectStatuses.find((s: any) => s.name?.toLowerCase().includes('concluíd') || s.name?.toLowerCase().includes('done'))
         const pendingStatus = projectStatuses.find((s: any) => s.name?.toLowerCase().includes('fazer') || s.name?.toLowerCase().includes('todo') || s.name?.toLowerCase().includes('pendente'))
 
-        // If currently done, move to pending. Else move to done.
         const isCurrentlyDone = task.status?.name?.toLowerCase().includes('concluíd') || task.status?.name?.toLowerCase().includes('done')
 
         const newStatus = isCurrentlyDone ? pendingStatus : doneStatus
 
         if (newStatus) {
-            // Optimistic update
-            // CRITICAL: Ensure we preserve the project/client data, and status object structure.
             const updatedTask = {
                 ...task,
                 status: newStatus,
                 status_id: newStatus.id,
-                // Explicitly preserve project if it exists (redundant with ...task but safe)
                 project: task.project
             }
-
-            mutate((prev: any[]) => prev?.map((t: any) => t.id === task.id ? updatedTask : t), false)
-
-            // Perform DB update
+            mutate((prev: any[] | undefined) => (prev || []).map((t: any) => t.id === task.id ? updatedTask : t), false)
             await updateTask(task.id, { status_id: newStatus.id })
         }
     }
 
-    const filteredTasks = useMemo(() => {
-        let result = tasks
+    // Cleaned up client-side filter since server handles it now
+    const filteredTasks = tasks
 
-        // 1. Tab Filtering
-        if (activeTab === 'my') {
-            // Server filtered, but ensure consistency if cache is stale or optimistically updated
-            // No strict need to filter again if we trust server, but harmless to keep for safety
-            if (currentUserId) {
-                result = result.filter((t: any) => t.assignees?.some((a: any) => a.user.id === currentUserId))
-            }
+    const { data: fetchedStatuses } = useSWR(
+        ['statuses', activeTab],
+        async () => {
+            const mod = await import('@/lib/db/tasks')
+            if (mod.getKanbanStatuses) return await mod.getKanbanStatuses(undefined)
+            return []
         }
-        // Projects and Clients tabs are handled in the rendering logic (grouping), 
-        // but we still rely on 'result' here. No filtering needed for them implies showing ALL tasks 
-        // (that the user has access to) grouped. 
-        // If 'projects' means "all projects", we don't filter. 
-        // If 'clients' means "all clients", we don't filter.
+    )
 
-        // 2. Date/Status Filtering
-
-
-        const today = startOfDay(new Date())
-
-        return result.filter((task: any) => {
-            const isDone = task.status?.name?.toLowerCase().includes('concluíd')
-                || task.status?.name?.toLowerCase().includes('done')
-                || task.status?.name?.toLowerCase().includes('finalizado')
-                || task.status?.name?.toLowerCase().includes('cancelad')
-
-            // Parse specifically as local date YYYY-MM-DD if exists
-            const taskDate = task.due_date ? startOfDay(parseISO(task.due_date)) : null
-
-            switch (activeFilter) {
-                case 'today':
-                    return taskDate && isToday(taskDate) && !isDone
-
-                case 'overdue':
-                    // Overdue: Date < Today AND Not Done
-                    return taskDate && isPast(taskDate) && !isToday(taskDate) && !isDone
-
-                case 'pending':
-                    // Pending: Not Done
-                    return !isDone
-
-                case 'completed':
-                    // Completed: Is Done
-                    return isDone
-
-                case 'next-week':
-                    if (!taskDate) return false
-                    // Next calendar week (Monday to Sunday)
-                    const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 }) // Monday
-                    const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 })   // Sunday
-                    return isWithinInterval(taskDate, {
-                        start: nextWeekStart,
-                        end: nextWeekEnd
-                    }) && !isDone
-
-                case 'all':
-                default:
-                    // User requested "All" to NOT show completed tasks? 
-                    // "As tarefas concluidas devem parar de aparecer nos filtros de todos... deve aparecer somente concluidas"
-                    // So "All" means "All Pending".
-                    return !isDone
-            }
-        })
-    }, [tasks, activeFilter])
-
-    // Derive statuses from tasks for Kanban (Unique IDs)
-    const derivedStatuses = useMemo(() => Array.from(
-        new Map(
-            (tasks || [])
-                .filter((t: any) => t.status && typeof t.status === 'object' && 'id' in t.status)
-                .map((t: any) => [t.status.id, t.status])
-        ).values()
-    ).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0)), [tasks])
+    // We pass all statuses to KanbanBoard so it can resolve project-specific IDs.
+    // The KanbanBoard component will handle deduplication of columns by name.
+    const derivedStatuses = useMemo(() => {
+        if (fetchedStatuses && fetchedStatuses.length > 0) {
+            return fetchedStatuses.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+        }
+        return Array.from(
+            new Map(
+                (tasks || [])
+                    .filter((t: any) => t.status && typeof t.status === 'object' && 'id' in t.status)
+                    .map((t: any) => [t.status.id, t.status])
+            ).values()
+        ).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+    }, [tasks, fetchedStatuses])
 
     return (
         <div className="h-full flex flex-col overflow-hidden bg-gray-50">
@@ -370,13 +308,19 @@ function TasksContent() {
                                         </div>
                                     )
                                 })}
-                                {/* Drawer for Kanban */}
                                 {selectedTaskId && (
-                                    <TaskDetailView
-                                        taskId={selectedTaskId}
-                                        onClose={() => handleTaskClick(selectedTaskId)}
-                                        onUpdate={handleTaskUpdate}
-                                    />
+                                    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 sm:p-6" onClick={() => handleTaskClick(selectedTaskId)}>
+                                        <div
+                                            className="bg-white rounded-xl w-full max-w-5xl h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <TaskDetailView
+                                                taskId={selectedTaskId}
+                                                onClose={() => handleTaskClick(selectedTaskId)}
+                                                onUpdate={handleTaskUpdate}
+                                            />
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         )

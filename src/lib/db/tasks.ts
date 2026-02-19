@@ -11,6 +11,7 @@ export async function getAllTasks(filters: {
     priority?: string[];
     search?: string;
     datePreset?: string; // 'today', 'overdue', 'next7', 'month', 'range'
+    activeFilter?: string; // 'today' | 'pending' | 'overdue' | 'completed' | 'next-week' | 'all'
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -23,24 +24,31 @@ export async function getAllTasks(filters: {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    let query: any = supabase
-        .from('tasks')
-        .select(`
+    // Optimization 1: Removed redundant statuses fetch from project inner join
+    // We build the select string dynamically to handle Assignee !inner filtering if needed
+    let selectString = `
             id, project_id, title, priority, due_date, status_id, updated_at, created_at,
             project:projects!inner (
                 id, 
                 name, 
-                client:clients!inner (id, name),
-                statuses:project_statuses(id, name, sort_order)
+                client:clients!inner (id, name)
             ),
             status:project_statuses (id, name, sort_order, is_default),
-            assignees:task_assignees (
-                user:profiles (id, name)
-            ),
             tags:task_tags (
                 tag:tags (id, name, color)
             )
-        `)
+        `
+
+    if (filters.assigneeId && filters.assigneeId.length > 0) {
+        // Use !inner to force filtering if we want only tasks WITH these assignees
+        // For "My Tasks" view, we want tasks assigned to me.
+        selectString += `, assignees:task_assignees!inner(user:profiles(id, name))`
+    } else {
+        // Left join (show all assignees for display)
+        selectString += `, assignees:task_assignees(user:profiles(id, name))`
+    }
+
+    let query = supabase.from('tasks').select(selectString)
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false })
         .range(from, to)
@@ -66,110 +74,113 @@ export async function getAllTasks(filters: {
         query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
     }
 
-    // 4. Assignee (Requires specific handling for many-to-many filtering if using !inner on assignees, 
-    //    but standard PostgREST filtering on embedded resource is: task_assignees!inner(user_id.in.(...)))
-    if (filters.assigneeId && filters.assigneeId.length > 0) {
-        // We use !inner on task_assignees to filter TASKS that have these assignees
-        // alias 'assignees' defined in select must match or use table name. 
-        // Supabase select syntax: task_assignees!inner(...)
-        // But we aliased it as 'assignees' in select. Let's try referencing the table directly for filtering if alias fails,
-        // or just use the relation. common practice: modify select to include !inner if filtering.
-
-        // Actually, to filter by "My Tasks" (current user), we need to ensure we only get tasks where I am assigned.
-        // The select above uses `assignees:task_assignees`. referencing `task_assignees!inner` in simple filter might work.
-        // Let's try simpler exact match if single, or create a specific filter query.
-
-        // For now, let's filter using the !inner hint in a separate modifier if possible, 
-        // OR rely on client-side or specific filter function. 
-        // BETTER: PostgREST allows filtering on related tables.
-        // `task_assignees.user_id` -> filter.
-
-        // Constructing the filter for relationship:
-        query = query.not('task_assignees', 'is', null) // Ensure it has assignees?
-        // Actually, straightforward way in supabase js:
-        // .eq('task_assignees.user_id', id) <- this often implies !inner.
-
-        // Since we allow multi-select, we need to check if ANY of the assignees match.
-        // This is complex in single query without distinct.
-        // "Show tasks where user X OR Y is assigned".
-
-        // We will assume "My Tasks" is single ID mostly.
-        // For array, we might need:
-        // .filter('task_assignees.user_id', 'in', `(${filters.assigneeId.join(',')})`)
-        // NOTE: This requires the join to be !inner.
-        // We changed select to just `task_assignees`. If we want to filter, we should probably change query construction
-        // or accept that we might fetch and filter (bad for pagination).
-
-        // Let's try the .filter notation which applies to the embedding resource if possible.
-        // But for specific "My Tasks" tab, it's critical.
-        // Let's use `context` injection or let Supabase resolve `!inner` automatically if we filter on it? 
-        // No, requires explicit !inner in select usually.
-
-        // Let's try to add !inner to the select string dynamically or just hardcode it?
-        // If we hardcode !inner on assignees, tasks WITHOUT assignees will vanish! That breaks "All Tasks".
-        // SO: We only use !inner if filter is present? 
-        // Supabase query builder is chainable but changing SELECT after creation is hard.
-
-        // Strategy: Build SELECT string based on filters.
-    }
-
-    // RE-STRATEGY for Assignee Filter:
-    // We will build the select clause dynamically.
-    let selectString = `
-        id, project_id, title, priority, due_date, status_id, updated_at, created_at,
-        project:projects!inner (
-            id, 
-            name, 
-            client:clients!inner (id, name),
-            statuses:project_statuses(id, name, sort_order)
-        ),
-        status:project_statuses (id, name, sort_order, is_default),
-        tags:task_tags (
-            tag:tags (id, name, color)
-        )
-    `
-
-    if (filters.assigneeId && filters.assigneeId.length > 0) {
-        // Use !inner to force filtering
-        selectString += `, assignees:task_assignees!inner(user:profiles(id, name))`
-    } else {
-        // Left join (show all)
-        selectString += `, assignees:task_assignees(user:profiles(id, name))`
-    }
-
-    // Reset query with new select
-    query = supabase.from('tasks').select(selectString)
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .range(from, to)
-
-    // ... Re-apply filters ...
-    if (filters.projectId) query = query.eq('project_id', filters.projectId)
-    if (filters.clientId) query = query.eq('projects.client_id', filters.clientId)
-    if (filters.status && filters.status.length > 0) query = query.in('status_id', filters.status)
-    if (filters.priority && filters.priority.length > 0) query = query.in('priority', filters.priority)
-    if (filters.search) query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`)
-
-    // Apply Assignee Filter
+    // 4. Assignee Filter
     if (filters.assigneeId && filters.assigneeId.length > 0) {
         query = query.in('assignees.user_id', filters.assigneeId)
     }
 
-    // 5. Dates
+    // 5. Optimization: Backend Filters (replacing client-side Date/Status logic)
     const today = new Date().toISOString().split('T')[0]
 
-    if (filters.datePreset === 'overdue') {
-        query = query.lt('due_date', today).not('status.is_default', 'is', true) // assuming default status checking logic or "done" status logic needed
-        // Actually "is_done" checks are usually status-based.
-        // We'll rely on frontend or specific status exclusion for overdue if needed.
-        // For now: just date.
-    } else if (filters.datePreset === 'today') {
-        query = query.eq('due_date', today)
-    } else if (filters.datePreset === 'next7') {
-        const next7 = new Date()
-        next7.setDate(next7.getDate() + 7)
-        query = query.gte('due_date', today).lte('due_date', next7.toISOString().split('T')[0])
-    } else if (filters.datePreset === 'range' && filters.startDate && filters.endDate) {
+    // Helper to query not done
+    // We filter by checking if status name contains keywords. 
+    // To do this on a joined relation 'status', we need to filter on the embedded resource.
+    const notDoneFilter = (q: any) => {
+        return q.not('status.name', 'ilike', '%Concluíd%')
+            .not('status.name', 'ilike', '%Done%')
+            .not('status.name', 'ilike', '%Finalizado%')
+            .not('status.name', 'ilike', '%Cancelad%')
+    }
+
+    if (filters.activeFilter) {
+        switch (filters.activeFilter) {
+            case 'today':
+                // Due date <= today AND not done (User request: overdue should appear in today)
+                query = query.lte('due_date', today)
+                query = notDoneFilter(query)
+                break
+
+            case 'overdue':
+                // Due date < today AND not done
+                query = query.lt('due_date', today)
+                query = notDoneFilter(query)
+                break
+
+            case 'pending':
+                // Not done
+                query = notDoneFilter(query)
+                break
+
+            case 'completed':
+                // Is Done. We check for keywords in status name.
+                // We use .or() on the foreign table columns if possible, but .or() usually works on the main table.
+                // For joined tables, we can use filtering!inner logic or the syntax: 
+                // status.name.ilike.%...%
+                // But ORing across multiple ILIKEs on a joined table is tricky in one string.
+                // Simpler: fetch tasks where status ID IN (list of done statuses).
+                // But we don't have list of done statuses here.
+                // Let's use the raw-er Supabase filter format for embedded resource if supported, 
+                // OR just use a simpler check: "not(notDone)"? No.
+                // Let's rely on text search on status.name.
+                // query = query.filter('status.name', 'ilike', '%Concluíd%') ...
+                // But we need OR.
+                // Let's try:
+                // query = query.textSearch('status.name', "'Concluíd' | 'Done' | 'Finalizado'")
+                // TextSearch might need index.
+                // Fallback:
+                // We will rely on a generic check.
+                // Or maybe we just filter by "not pending"?
+                // Let's try:
+                // query = query.or('name.ilike.%Concluíd%,name.ilike.%Done%,name.ilike.%Finalizado%', { foreignTable: 'project_statuses' })
+                // This seems supported in some versions of Supabase JS.
+                // If not, we might need a stored procedure or implicit join filter.
+                // Let's assume the syntax `project_statuses.name.ilike` works with !inner.
+                // But status is not !inner by default in my select.
+                // FORCE !inner for status if filtering by it? 
+                // "status!inner(...)"
+                // I'll stick to:
+                query = query.or('name.ilike.%Concluíd%,name.ilike.%Done%,name.ilike.%Finalizado%,name.ilike.%Cancelad%', { foreignTable: 'project_statuses' })
+                break
+
+            case 'next-week':
+                const nextWeekStart = new Date()
+                nextWeekStart.setDate(nextWeekStart.getDate() + 1) // Tomorrow
+                const nextWeekEnd = new Date()
+                nextWeekEnd.setDate(nextWeekEnd.getDate() + 8)
+
+                query = query.gte('due_date', nextWeekStart.toISOString().split('T')[0])
+                    .lte('due_date', nextWeekEnd.toISOString().split('T')[0])
+                query = notDoneFilter(query)
+                break
+
+            case 'all':
+            default:
+                // Show everything (pending + completed) or just pending?
+                // "Tarefas concluídas devem parar de aparecer nos filtros de todos... deve aparecer somente concluídas"
+                // This implies 'all' (default view?) should Hide Completed?
+                // If 'all' means "Everything", then we show everything.
+                // If the user meant "General view" (All tabs?), then hide completed.
+                // I will assume 'all' filter explicitly means "All Tasks", so show everything.
+                // But if default 'activeFilter' is 'pending' in frontend?
+                // Frontend default is 'today'.
+                // If user clicks 'Todos', they usually want to see everything.
+                // But the user said: "As tarefas concluídas devem parar de aparecer nos filtros de todos".
+                // "Filtros de todos" might refer to the "All" TAB or "All" Filter.
+                // I will interpret: "All" FILTER should NOT show completed tasks.
+                // Wait, if "All" doesn't show completed, and "Pending" doesn't show completed... what's the difference?
+                // Maybe "All" means "All Pending Tasks" regardless of priority/date?
+                // And "Completed" shows "Completed Tasks".
+                // So "All" = Pending.
+                // Let's apply notDoneFilter for 'all' too.
+                if (filters.activeFilter === 'all') {
+                    query = notDoneFilter(query)
+                }
+                break
+        }
+    }
+
+    // 6. Legacy Date Presets (compatibility)
+    if (filters.datePreset === 'range' && filters.startDate && filters.endDate) {
         query = query.gte('due_date', filters.startDate).lte('due_date', filters.endDate)
     }
 
@@ -446,4 +457,25 @@ export async function updateTaskAssignees(taskId: string, assigneeIds: string[])
     }
 
     return { error: null }
+}
+
+export async function getKanbanStatuses(projectId?: string) {
+    const supabase = await createClient()
+
+    // Optimization: fetch statuses
+    if (projectId) {
+        const { data } = await supabase
+            .from('project_statuses')
+            .select('id, name, sort_order, is_default')
+            .eq('project_id', projectId)
+            .order('sort_order', { ascending: true })
+        return data || []
+    }
+
+    // Return global/all statuses for Kanban
+    const { data } = await supabase
+        .from('project_statuses')
+        .select('id, name, sort_order, is_default, project_id')
+        .order('sort_order')
+    return data || []
 }

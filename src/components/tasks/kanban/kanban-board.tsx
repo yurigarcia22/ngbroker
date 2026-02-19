@@ -20,14 +20,19 @@ export function KanbanBoard({ tasks, statuses, onTaskClick, onUpdate }: KanbanBo
 
     useEffect(() => {
         setIsMounted(true)
-        // Group tasks logic...
+        // Group tasks by status NAME
         const grouped: Record<string, any[]> = {}
-        statuses.forEach(s => grouped[s.id] = [])
+
+        // Initialize columns using status names
+        statuses.forEach(s => {
+            if (s.name) grouped[s.name] = []
+        })
 
         tasks.forEach(task => {
-            const statusId = task.status_id
-            if (grouped[statusId]) {
-                grouped[statusId].push(task)
+            const statusName = task.status?.name
+            if (statusName) {
+                if (!grouped[statusName]) grouped[statusName] = []
+                grouped[statusName].push(task)
             }
         })
         setBoardData(grouped)
@@ -38,7 +43,6 @@ export function KanbanBoard({ tasks, statuses, onTaskClick, onUpdate }: KanbanBo
     }
 
     const onDragEnd = async (result: DropResult) => {
-        // ... (rest of onDragEnd) ...
         const { destination, source, draggableId } = result
 
         if (!destination) return
@@ -50,54 +54,84 @@ export function KanbanBoard({ tasks, statuses, onTaskClick, onUpdate }: KanbanBo
             return
         }
 
-        const startStatusId = source.droppableId
-        const finishStatusId = destination.droppableId
+        const startStatusName = source.droppableId
+        const finishStatusName = destination.droppableId
 
         // Optimistic Update
-        const startColumn = [...boardData[startStatusId]]
-        const finishColumn = startStatusId === finishStatusId ? startColumn : [...boardData[finishStatusId]]
+        const startColumn = [...(boardData[startStatusName] || [])]
+        const finishColumn = startStatusName === finishStatusName ? startColumn : [...(boardData[finishStatusName] || [])]
 
         const [movedTask] = startColumn.splice(source.index, 1)
 
-        // Update task status object locally for display
-        const newStatus = statuses.find(s => s.id === finishStatusId)
-        movedTask.status = newStatus
-        movedTask.status_id = finishStatusId
+        // Find the correct status ID for the task's project
+        let newStatusId = movedTask.status_id
+        // Try to find a status with the target name AND the same project_id as the task
+        // We look in the `statuses` prop which contains all statuses
+        const matchingStatus = statuses.find(s => s.name === finishStatusName && s.project_id === movedTask.project_id)
 
-        if (startStatusId === finishStatusId) {
+        if (matchingStatus) {
+            newStatusId = matchingStatus.id
+            // Update local task status object for display
+            movedTask.status = matchingStatus
+        } else {
+            // Fallback: This shouldn't happen if data is consistent, but if it does, 
+            // we should probably warn or maybe the task is in a project that is not fully loaded?
+            // Or maybe specific project status doesn't exist?
+            // For now, valid move visually, but might fail DB update if we don't have ID.
+            // If we don't find it, we keep original ID? No, that would revert the status.
+            // We just let it be name update visually?
+            // Update visual name so it sticks in column
+            movedTask.status = { ...movedTask.status, name: finishStatusName }
+            console.warn(`Could not resolve status ID for project ${movedTask.project_id} and status ${finishStatusName}`)
+        }
+
+        movedTask.status_id = newStatusId // Update ID
+
+        if (startStatusName === finishStatusName) {
             startColumn.splice(destination.index, 0, movedTask)
             setBoardData({
                 ...boardData,
-                [startStatusId]: startColumn
+                [startStatusName]: startColumn
             })
         } else {
             finishColumn.splice(destination.index, 0, movedTask)
             setBoardData({
                 ...boardData,
-                [startStatusId]: startColumn,
-                [finishStatusId]: finishColumn
+                [startStatusName]: startColumn,
+                [finishStatusName]: finishColumn
             })
 
             // DB Update
             try {
-                await updateTask(draggableId, { status_id: finishStatusId })
-                router.refresh()
-                if (onUpdate) onUpdate()
+                if (newStatusId && newStatusId !== draggableId) { // Check if we have a valid ID to update
+                    await updateTask(draggableId, { status_id: newStatusId })
+                    router.refresh()
+                    if (onUpdate) onUpdate()
+                }
             } catch (error) {
                 console.error('Failed to update task status', error)
             }
         }
     }
 
+    // Deduplicate statuses by name for rendering columns
+    // We use the first one encountered for ID (key) but use Name for title
+    const uniqueColumns = statuses.reduce((acc: any[], current) => {
+        if (!acc.find(item => item.name === current.name)) {
+            acc.push(current)
+        }
+        return acc
+    }, [])
+
     return (
         <DragDropContext onDragEnd={onDragEnd}>
-            <div className="flex h-full overflow-x-auto pb-4">
-                {statuses.map(status => (
+            <div className="flex h-full overflow-x-auto pb-4 custom-scrollbar">
+                {uniqueColumns.map((status: any) => (
                     <KanbanColumn
-                        key={status.id}
-                        columnId={status.id}
+                        key={status.name} // Use Name as key/id for droppable
+                        columnId={status.name}
                         title={status.name}
-                        tasks={boardData[status.id] || []}
+                        tasks={boardData[status.name] || []}
                         onTaskClick={onTaskClick}
                     />
                 ))}
