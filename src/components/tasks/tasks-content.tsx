@@ -333,6 +333,7 @@ export function TasksContent({ initialTasks, initialStatuses }: { initialTasks: 
                                         >
                                             <TaskDetailView
                                                 taskId={selectedTaskId}
+                                                initialTask={tasks.find((t: any) => t.id === selectedTaskId)}
                                                 onClose={() => handleTaskClick(selectedTaskId)}
                                                 onUpdate={handleTaskUpdate}
                                             />
@@ -406,6 +407,7 @@ export function TasksContent({ initialTasks, initialStatuses }: { initialTasks: 
                                     <div className="w-full lg:w-2/5 xl:w-[45%] flex-none border-l border-gray-200 bg-white h-full overflow-hidden absolute lg:relative inset-0 lg:inset-auto z-10 lg:z-0">
                                         <TaskDetailView
                                             taskId={selectedTaskId}
+                                            initialTask={tasks.find((t: any) => t.id === selectedTaskId)}
                                             onClose={() => handleTaskClick(selectedTaskId)}
                                             onUpdate={handleTaskUpdate}
                                         />

@@ -13,18 +13,24 @@ import { Timer, StopCircle, Play } from 'lucide-react'
 
 interface TaskDetailViewProps {
     taskId: string | null
+    initialTask?: any // PRE-FETCHED TASK FROM PARENT
     onClose: () => void
     onUpdate?: (updatedTask?: any) => void // Callback when task changes
 }
 
-export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProps) {
+export function TaskDetailView({ taskId, initialTask, onClose, onUpdate }: TaskDetailViewProps) {
     const { startTimer, stopTimer, activeTaskId, isRunning, openStopModal } = useTimeTrackerStore()
-    const [task, setTask] = useState<any>(null)
+    const [task, setTask] = useState<any>(initialTask || null)
     const [comments, setComments] = useState<any[]>([])
     const [users, setUsers] = useState<any[]>([])
     const [allTags, setAllTags] = useState<any[]>([])
     const [statuses, setStatuses] = useState<any[]>([])
     const [activeDropdown, setActiveDropdown] = useState<'assignees' | 'tags' | null>(null)
+
+    // Sync task if initialTask prop changes (e.g., clicking another task)
+    useEffect(() => {
+        if (initialTask) setTask(initialTask)
+    }, [initialTask])
 
     // Chat State
     const [body, setBody] = useState('')
@@ -34,13 +40,17 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
 
     const supabase = createClient()
 
-    // Fetch Data
+    // Fetch Additional Data (Non-blocking)
     useEffect(() => {
         if (!taskId) return
 
         const fetchData = async () => {
+            // Fetch task only if we didn't receive initialTask (fallback), otherwise just get fresh version
+            const taskPromise = getTask(taskId)
+
+            // Secondary items
             const [t, c, u, tags, checklist, attachments, timeEntries] = await Promise.all([
-                getTask(taskId),
+                taskPromise,
                 getTaskComments(taskId),
                 getUsers(),
                 getTags(),
@@ -49,7 +59,6 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
                 getTaskTimeEntries(taskId)
             ])
 
-            // Merge parallel data into task object for backward compatibility with UI components that expect them nested
             setTask({
                 ...t,
                 checklist,
@@ -61,14 +70,14 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
             setAllTags(tags)
 
             // Fetch statuses for this project
-            if (t?.project_id) {
+            if (t?.project_id || initialTask?.project_id) {
+                const projectId = t?.project_id || initialTask?.project_id
                 const { data: projectStatuses } = await supabase
                     .from('project_statuses')
                     .select('*')
-                    .eq('project_id', t.project_id)
+                    .eq('project_id', projectId)
                     .order('sort_order')
 
-                // Deduplicate by name to prevent UI clutter if data source has dups
                 const uniqueStatuses = Array.from(
                     new Map((projectStatuses || []).map(s => [s.name, s])).values()
                 ).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
@@ -85,22 +94,13 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `id=eq.${taskId}` }, () => {
                 getTask(taskId).then(t => {
-                    // CRITICAL: Merge with existing to preserve local-only or pre-fetched fields if t is missing them
-                    // But usually t from getTask IS the source of truth for the task record.
-                    // However, we must ensure we don't lose the 'project' reference if getTask somehow fails to join correctly (unlikely with new fix).
-                    // We also need to preserve checklist/attachments/time_entries which are stored in SEPARATE states in this component,
-                    // BUT they were merged into 'task' state for backward compatibility. 
-                    // To be safe, we re-merge them here using current state values.
-
                     setTask((prev: any) => ({
                         ...prev,
                         ...t,
-                        // Preserve sub-resources from state if not returned by getTask
                         checklist: checklistItems,
-                        attachments: prev?.attachments, // these are not fully reactive in this block yet
+                        attachments: prev?.attachments,
                         time_entries: prev?.time_entries
                     }))
-
                     if (onUpdate) onUpdate(t)
                 })
             })
@@ -109,7 +109,7 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [taskId])
+    }, [taskId, initialTask?.project_id])
 
     useEffect(() => {
         if (comments.length > 0) {

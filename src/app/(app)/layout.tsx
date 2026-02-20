@@ -2,6 +2,7 @@ import '../globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Sidebar } from '@/components/layout/sidebar'
+import { GlobalTimerModal } from '@/components/tasks/time-tracker/global-timer-modal'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -25,6 +26,7 @@ export default function AppLayout({
                     </main>
                 </div>
             </div>
+            <GlobalTimerModal />
         </div>
     )
 }
