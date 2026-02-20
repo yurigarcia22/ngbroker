@@ -26,12 +26,13 @@ export async function getAllTasks(filters: {
 
     // Optimization 1: Removed redundant statuses fetch from project inner join
     // We build the select string dynamically to handle Assignee !inner filtering if needed
+    // IMPORTANT: Keep nested queries to absolute minimum to reduce payload size over the network
     let selectString = `
             id, project_id, title, priority, due_date, status_id, updated_at, created_at,
             project:projects!inner (
                 id, 
                 name, 
-                client:clients!inner (id, name)
+                client:clients (name)
             ),
             status:project_statuses (id, name, sort_order, is_default),
             tags:task_tags (
@@ -41,11 +42,10 @@ export async function getAllTasks(filters: {
 
     if (filters.assigneeId && filters.assigneeId.length > 0) {
         // Use !inner to force filtering if we want only tasks WITH these assignees
-        // For "My Tasks" view, we want tasks assigned to me.
-        selectString += `, assignees:task_assignees!inner(user:profiles(id, name))`
+        selectString += `, assignees:task_assignees!inner(user_id, user:profiles(name))`
     } else {
         // Left join (show all assignees for display)
-        selectString += `, assignees:task_assignees(user:profiles(id, name))`
+        selectString += `, assignees:task_assignees(user_id, user:profiles(name))`
     }
 
     let query = supabase.from('tasks').select(selectString)

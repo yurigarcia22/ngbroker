@@ -147,12 +147,17 @@ function TasksContent() {
         return sortedTasks
     }, [tasks, activeFilter])
 
-    const { data: fetchedStatuses } = useSWR(
+    // Quick check if statuses are loaded
+    const { data: fetchedStatuses, isLoading: statusesLoading } = useSWR(
         ['statuses', activeTab],
         async () => {
             const mod = await import('@/lib/db/tasks')
             if (mod.getKanbanStatuses) return await mod.getKanbanStatuses(undefined)
             return []
+        },
+        {
+            revalidateOnFocus: false, // Prevent aggressive refetching
+            dedupingInterval: 300000 // Cache statuses for 5 minutes
         }
     )
 
@@ -160,15 +165,20 @@ function TasksContent() {
     // The KanbanBoard component will handle deduplication of columns by name.
     const derivedStatuses = useMemo(() => {
         if (fetchedStatuses && fetchedStatuses.length > 0) {
-            return fetchedStatuses.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+            return [...fetchedStatuses].sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
         }
-        return Array.from(
-            new Map(
-                (tasks || [])
-                    .filter((t: any) => t.status && typeof t.status === 'object' && 'id' in t.status)
-                    .map((t: any) => [t.status.id, t.status])
-            ).values()
-        ).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
+        if (!tasks || tasks.length === 0) return []
+
+        // Fallback to extracting from tasks
+        const statusMap = new Map()
+        for (const t of tasks) {
+            if (t.status && typeof t.status === 'object' && 'id' in t.status) {
+                if (!statusMap.has(t.status.id)) {
+                    statusMap.set(t.status.id, t.status)
+                }
+            }
+        }
+        return Array.from(statusMap.values()).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
     }, [tasks, fetchedStatuses])
 
     return (
