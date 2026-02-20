@@ -127,7 +127,25 @@ function TasksContent() {
     }
 
     // Cleaned up client-side filter since server handles it now
-    const filteredTasks = tasks
+    // We apply custom sorting to prioritize today's tasks if the 'today' filter is active
+    const filteredTasks = useMemo(() => {
+        if (!tasks) return []
+
+        let sortedTasks = [...tasks]
+
+        if (activeFilter === 'today') {
+            const todayStr = new Date().toISOString().split('T')[0]
+            sortedTasks.sort((a, b) => {
+                const isAToday = a.due_date === todayStr
+                const isBToday = b.due_date === todayStr
+                if (isAToday && !isBToday) return -1
+                if (!isAToday && isBToday) return 1
+                return 0 // Maintain existing order for others
+            })
+        }
+
+        return sortedTasks
+    }, [tasks, activeFilter])
 
     const { data: fetchedStatuses } = useSWR(
         ['statuses', activeTab],

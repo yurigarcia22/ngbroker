@@ -83,13 +83,19 @@ export async function getAllTasks(filters: {
     const today = new Date().toISOString().split('T')[0]
 
     // Helper to query not done
-    // We filter by checking if status name contains keywords. 
-    // To do this on a joined relation 'status', we need to filter on the embedded resource.
+    // We first fetch all status IDs that mean "done"
+    const { data: doneStatuses } = await supabase
+        .from('project_statuses')
+        .select('id')
+        .or('name.ilike.%Concluíd%,name.ilike.%Done%,name.ilike.%Finalizado%,name.ilike.%Cancelad%')
+
+    const doneStatusIds = doneStatuses?.map((s) => s.id) || []
+
     const notDoneFilter = (q: any) => {
-        return q.not('status.name', 'ilike', '%Concluíd%')
-            .not('status.name', 'ilike', '%Done%')
-            .not('status.name', 'ilike', '%Finalizado%')
-            .not('status.name', 'ilike', '%Cancelad%')
+        if (doneStatusIds.length > 0) {
+            return q.not('status_id', 'in', `(${doneStatusIds.join(',')})`)
+        }
+        return q
     }
 
     if (filters.activeFilter) {
@@ -112,34 +118,12 @@ export async function getAllTasks(filters: {
                 break
 
             case 'completed':
-                // Is Done. We check for keywords in status name.
-                // We use .or() on the foreign table columns if possible, but .or() usually works on the main table.
-                // For joined tables, we can use filtering!inner logic or the syntax: 
-                // status.name.ilike.%...%
-                // But ORing across multiple ILIKEs on a joined table is tricky in one string.
-                // Simpler: fetch tasks where status ID IN (list of done statuses).
-                // But we don't have list of done statuses here.
-                // Let's use the raw-er Supabase filter format for embedded resource if supported, 
-                // OR just use a simpler check: "not(notDone)"? No.
-                // Let's rely on text search on status.name.
-                // query = query.filter('status.name', 'ilike', '%Concluíd%') ...
-                // But we need OR.
-                // Let's try:
-                // query = query.textSearch('status.name', "'Concluíd' | 'Done' | 'Finalizado'")
-                // TextSearch might need index.
-                // Fallback:
-                // We will rely on a generic check.
-                // Or maybe we just filter by "not pending"?
-                // Let's try:
-                // query = query.or('name.ilike.%Concluíd%,name.ilike.%Done%,name.ilike.%Finalizado%', { foreignTable: 'project_statuses' })
-                // This seems supported in some versions of Supabase JS.
-                // If not, we might need a stored procedure or implicit join filter.
-                // Let's assume the syntax `project_statuses.name.ilike` works with !inner.
-                // But status is not !inner by default in my select.
-                // FORCE !inner for status if filtering by it? 
-                // "status!inner(...)"
-                // I'll stick to:
-                query = query.or('name.ilike.%Concluíd%,name.ilike.%Done%,name.ilike.%Finalizado%,name.ilike.%Cancelad%', { foreignTable: 'project_statuses' })
+                if (doneStatusIds.length > 0) {
+                    query = query.in('status_id', doneStatusIds)
+                } else {
+                    // Fallback if no done statuses exist
+                    query = query.eq('id', '00000000-0000-0000-0000-000000000000') // returns empty
+                }
                 break
 
             case 'next-week':
