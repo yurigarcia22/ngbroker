@@ -29,8 +29,13 @@ export function TasksContent({ initialTasks, initialStatuses }: { initialTasks: 
     const [page, setPage] = useState(1)
     const ITEMS_PER_PAGE = 30
 
-    // Selection (Mapped to URL)
-    const selectedTaskId = searchParams.get('taskId')
+    // Selection (Mapped to URL but tracked locally for instant UI without RSC blocking)
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(searchParams.get('taskId'))
+
+    // Keep local state synced if URL changes via back/forward buttons
+    useEffect(() => {
+        setSelectedTaskId(searchParams.get('taskId'))
+    }, [searchParams])
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
     const supabase = createClient()
@@ -67,13 +72,17 @@ export function TasksContent({ initialTasks, initialStatuses }: { initialTasks: 
     const loading = swrLoading && !tasks.length
 
     const handleTaskClick = (id: string) => {
-        const params = new URLSearchParams(searchParams)
-        if (selectedTaskId === id) {
-            params.delete('taskId')
+        const newId = selectedTaskId === id ? null : id
+        setSelectedTaskId(newId)
+
+        // Update URL instantaneously without triggering a Next.js Server Component reload
+        const params = new URLSearchParams(window.location.search)
+        if (newId) {
+            params.set('taskId', newId)
         } else {
-            params.set('taskId', id)
+            params.delete('taskId')
         }
-        router.replace(`${pathname}?${params.toString()}`)
+        window.history.replaceState(null, '', `${pathname}?${params.toString()}`)
     }
 
     const handleTaskUpdate = (updatedTask?: any) => {

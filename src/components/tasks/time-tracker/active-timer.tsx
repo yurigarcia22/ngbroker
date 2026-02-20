@@ -7,9 +7,8 @@ import { StopTimerModal } from './stop-timer-modal'
 import { cn } from '@/lib/utils'
 
 export function ActiveTimer() {
-    const { isRunning, startTime, taskTitle, activeTaskId } = useTimeTrackerStore()
+    const { isRunning, startTime, taskTitle, activeTaskId, isStopModalOpen, openStopModal, closeStopModal } = useTimeTrackerStore()
     const [elapsed, setElapsed] = useState('00:00:00')
-    const [isStopModalOpen, setIsStopModalOpen] = useState(false)
     const [isClient, setIsClient] = useState(false)
 
     useEffect(() => {
@@ -59,7 +58,7 @@ export function ActiveTimer() {
                 </div>
 
                 <button
-                    onClick={() => setIsStopModalOpen(true)}
+                    onClick={() => openStopModal()}
                     className="p-1 rounded-full hover:bg-white/50 text-current transition-colors"
                 >
                     <StopCircle className="h-4 w-4 fill-current" />
@@ -68,7 +67,7 @@ export function ActiveTimer() {
 
             <StopTimerModal
                 isOpen={isStopModalOpen}
-                onClose={() => setIsStopModalOpen(false)}
+                onClose={() => closeStopModal()}
             />
         </>
     )

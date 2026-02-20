@@ -18,7 +18,7 @@ interface TaskDetailViewProps {
 }
 
 export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProps) {
-    const { startTimer, stopTimer, activeTaskId, isRunning } = useTimeTrackerStore()
+    const { startTimer, stopTimer, activeTaskId, isRunning, openStopModal } = useTimeTrackerStore()
     const [task, setTask] = useState<any>(null)
     const [comments, setComments] = useState<any[]>([])
     const [users, setUsers] = useState<any[]>([])
@@ -303,7 +303,7 @@ export function TaskDetailView({ taskId, onClose, onUpdate }: TaskDetailViewProp
     const handleToggleTimer = () => {
         if (!task) return
         if (activeTaskId === task.id && isRunning) {
-            // Already running
+            openStopModal()
         } else {
             startTimer(task.id, task.title)
         }
